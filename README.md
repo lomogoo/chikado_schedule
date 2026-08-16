@@ -71,6 +71,10 @@ python3 -m http.server 8000
 
 公開 URL: <https://lomogoo.github.io/chikado_schedule/>
 
+> Pages の `github-pages` 環境は既定で**デフォルトブランチからのデプロイのみ**を許可します。
+> そのため `main` をデフォルトブランチにしておく必要があります
+> （Settings → General → Default branch）。
+
 ---
 
 ## データ構造
