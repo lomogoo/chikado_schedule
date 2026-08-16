@@ -9,10 +9,10 @@ export const SUPABASE_URL = 'https://tfkzsbwhvhgxbnnfwtou.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_Ro1VwRK4o96IkyV6JC0q6w_vCjfFWYm';
 
 /**
- * 予約を格納するテーブル名。
- * 既存の `reservations` とは分離するため、このアプリ専用のテーブルを使います。
+ * テーブル名。既存の `reservations` とは分離した専用テーブルを使います。
  */
 export const TABLE = 'chikado_reservations';
+export const BOARD_TABLE = 'chikado_inquiries';
 
 /** 3日間ビューで同時に見せる日数（横スクロールでそれ以外の日も辿れます） */
 export const VISIBLE_DAYS = 3;
@@ -22,8 +22,9 @@ export const DAY_WINDOW = 28;
 export const DAY_EXTEND = 14;
 export const DAY_MAX = 180;
 
-/** 月別ビューが保持する月ブロックの上限 */
+/** 月別ビューが保持する月ブロックの上限と、現在月の前後に確保しておく月数 */
 export const MONTH_MAX = 24;
+export const MONTH_BUFFER = 2;
 
 /** 予約枠の刻み（分） */
 export const SLOT_MINUTES = 30;

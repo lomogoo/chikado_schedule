@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>チカ堂 スケジュール</title>
-<meta name="description" content="チカ堂の施設利用スケジュール管理。月別ビューと3日間ビューで仮予約・本予約を管理します。" />
+<meta name="description" content="チカ堂の施設利用スケジュール管理。月別ビュー・3日間ビュー・イベント相談掲示板。" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./assets/favicon.svg" />
@@ -30,6 +30,7 @@
       <div class="seg" role="tablist" aria-label="表示切替">
         <button class="seg-btn is-active" role="tab" data-view="month" aria-selected="true">月</button>
         <button class="seg-btn" role="tab" data-view="three" aria-selected="false">3日間</button>
+        <button class="seg-btn" role="tab" data-view="board" aria-selected="false">掲示板</button>
       </div>
 
       <button class="icon-btn notif-btn" id="btn-notif" type="button" aria-label="お知らせ">
@@ -42,28 +43,27 @@
 
       <button class="btn btn-primary" id="btn-new" type="button">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg>
-        <span>新規予約</span>
+        <span id="btn-new-label">新規予約</span>
       </button>
     </div>
   </div>
 
   <div class="header-bar">
-    <div class="nav-cluster">
+    <div class="nav-cluster" id="nav-cluster">
       <button class="icon-btn" id="btn-prev" type="button" aria-label="前へ">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10 2 4 8l6 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
       </button>
+      <button class="btn btn-ghost" id="btn-today" type="button">今日</button>
       <button class="icon-btn" id="btn-next" type="button" aria-label="次へ">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
       </button>
-      <button class="btn btn-ghost" id="btn-today" type="button">今日</button>
       <h1 class="period" id="period-label">—</h1>
     </div>
 
-    <div class="filter-cluster">
+    <div class="filter-cluster" id="filter-cluster">
       <button class="chip-filter is-active" data-filter="all" type="button">すべて</button>
       <button class="chip-filter" data-filter="confirmed" type="button"><i class="dot dot-confirmed"></i>本予約</button>
       <button class="chip-filter" data-filter="tentative" type="button"><i class="dot dot-tentative"></i>仮予約</button>
-      <button class="chip-filter" data-filter="urgent" type="button"><i class="dot dot-urgent"></i>要確認</button>
     </div>
   </div>
 </header>
@@ -72,6 +72,7 @@
 <main class="app-main">
   <section id="view-month" class="view"></section>
   <section id="view-three" class="view" hidden></section>
+  <section id="view-board" class="view" hidden></section>
 
   <div class="loading-bar" id="loading-bar" hidden></div>
 </main>
@@ -103,6 +104,8 @@
     <form class="sheet-body" id="reservation-form" novalidate>
       <input type="hidden" name="id" />
 
+      <div class="from-inquiry" id="from-inquiry" hidden></div>
+
       <div class="field">
         <span class="label">予約区分</span>
         <div class="status-pick">
@@ -129,23 +132,25 @@
       </label>
 
       <div class="field">
-        <span class="label">利用日 <i class="req">必須</i><small class="hint">複数日にまたがる場合は終了日を変更</small></span>
-        <div class="time-row">
-          <input class="input" type="date" name="start_date" required />
-          <span class="time-sep">→</span>
-          <input class="input" type="date" name="end_date" required />
-        </div>
-        <div class="duration" id="span-label"></div>
-      </div>
+        <span class="label">利用日時 <i class="req">必須</i><small class="hint">30分単位・日をまたいでも指定できます</small></span>
 
-      <div class="field">
-        <span class="label">利用時間 <i class="req">必須</i><small class="hint">30分単位</small></span>
-        <div class="time-row">
-          <select class="input select" name="start_time" required></select>
-          <span class="time-sep">→</span>
-          <select class="input select" name="end_time" required></select>
+        <label class="allday-toggle">
+          <input type="checkbox" name="all_day" />
+          <span class="allday-box"><i class="allday-mark"></i>終日（0:00〜24:00）</span>
+        </label>
+
+        <div class="dt-row">
+          <span class="dt-tag">開始</span>
+          <input class="input dt-date" type="date" name="start_date" required />
+          <select class="input select dt-time" name="start_time" required></select>
         </div>
-        <div class="duration" id="duration-label"></div>
+        <div class="dt-row">
+          <span class="dt-tag">終了</span>
+          <input class="input dt-date" type="date" name="end_date" required />
+          <select class="input select dt-time" name="end_time" required></select>
+        </div>
+
+        <div class="duration" id="span-label"></div>
       </div>
 
       <label class="field">
@@ -207,6 +212,94 @@
       <div class="spacer"></div>
       <button class="btn btn-ghost" id="detail-confirm" type="button" hidden>本予約に確定</button>
       <button class="btn btn-primary" id="detail-edit" type="button">編集</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 相談フォーム（掲示板） ============ -->
+<div class="overlay" id="overlay-inquiry" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-title">
+    <div class="sheet-head">
+      <h2 class="sheet-title" id="inquiry-title">相談を貼る</h2>
+      <button class="icon-btn icon-btn-plain" id="inquiry-close" type="button" aria-label="閉じる">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+
+    <form class="sheet-body" id="inquiry-form" novalidate>
+      <input type="hidden" name="id" />
+
+      <p class="sheet-lead">日程が決まっていない利用希望を、付箋にして貼っておけます。<br>日程が固まったら、この相談からそのままカレンダーへ移せます。</p>
+
+      <label class="field">
+        <span class="label">件名 <i class="req">必須</i></span>
+        <input class="input" type="text" name="title" maxlength="80" placeholder="例）冬のクラフト市（仮）" required />
+      </label>
+
+      <label class="field">
+        <span class="label">希望時期 <i class="opt">任意</i><small class="hint">ざっくりでOK</small></span>
+        <input class="input" type="text" name="desired_period" maxlength="120" placeholder="例）12月の週末、平日夜、いつでも" />
+      </label>
+
+      <label class="field">
+        <span class="label">利用内容 <i class="req">必須</i></span>
+        <textarea class="input textarea" name="purpose" rows="3" maxlength="1000" placeholder="例）作家12組による展示販売。搬入は前日から。" required></textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="label">利用者・団体名</span>
+          <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂プロジェクト" />
+        </label>
+        <label class="field">
+          <span class="label">連絡先</span>
+          <input class="input" type="text" name="contact" maxlength="120" placeholder="電話 / メール" />
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="label">チカ堂担当者 <i class="opt">任意</i></span>
+          <input class="input" type="text" name="staff" maxlength="80" placeholder="例）吉田" />
+        </label>
+        <label class="field field-narrow">
+          <span class="label">想定人数</span>
+          <input class="input" type="number" name="headcount" min="0" max="9999" placeholder="—" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="label">備考</span>
+        <textarea class="input textarea" name="notes" rows="2" maxlength="1000" placeholder="検討中の条件など"></textarea>
+      </label>
+
+      <div class="form-alert" id="inquiry-alert" hidden></div>
+    </form>
+
+    <div class="sheet-foot">
+      <button class="btn btn-danger-ghost" id="inquiry-delete" type="button" hidden>削除</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" id="inquiry-cancel" type="button">キャンセル</button>
+      <button class="btn btn-primary" id="inquiry-submit" type="button">貼る</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 相談詳細（掲示板） ============ -->
+<div class="overlay" id="overlay-inquiry-detail" hidden>
+  <div class="sheet sheet-narrow" role="dialog" aria-modal="true" aria-labelledby="idetail-title">
+    <div class="sheet-head">
+      <h2 class="sheet-title" id="idetail-title">相談の内容</h2>
+      <button class="icon-btn icon-btn-plain" id="idetail-close" type="button" aria-label="閉じる">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="idetail-body"></div>
+    <div class="sheet-foot">
+      <button class="btn btn-danger-ghost" id="idetail-delete" type="button">削除</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" id="idetail-edit" type="button">編集</button>
+      <button class="btn btn-primary" id="idetail-schedule" type="button">日程を決めてカレンダーへ</button>
     </div>
   </div>
 </div>

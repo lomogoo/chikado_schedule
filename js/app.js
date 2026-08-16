@@ -2,21 +2,26 @@
  * チカ堂 SCHEDULE — アプリ本体
  */
 
-import { Reservations, ApiError } from './api.js';
+import { Reservations, Inquiries, ApiError } from './api.js';
 import {
-  VISIBLE_DAYS, SLOT_MINUTES, DAY_WINDOW, DAY_EXTEND, DAY_MAX, MONTH_MAX,
+  VISIBLE_DAYS, SLOT_MINUTES, DAY_WINDOW, DAY_EXTEND, DAY_MAX,
+  MONTH_MAX, MONTH_BUFFER,
   URGENT_DAYS, POLL_INTERVAL_MS, NOTIFY_PAST_DAYS, NOTIFY_FUTURE_DAYS,
 } from './config.js';
 import { renderMonths, captureMonthScroll, restoreMonthScroll, scrollToMonth } from './monthView.js';
 import {
   renderDayStrip, captureStripScroll, restoreStripScroll, scrollToDay, currentFirstDay,
 } from './threeDayView.js';
-import { buildNotifications, markRead, primeOnFirstRun, signature } from './readState.js';
+import { renderBoard } from './boardView.js';
+import {
+  buildNotifications, markRead, primeOnFirstRun, signature, boardSignature, boardKey,
+} from './readState.js';
 import {
   ymd, parseYmd, addDays, addMonths, startOfMonth, monthCells, monthKey, monthLabel,
   todayYmd, toMin, toHHMM, hhmm, slotOptions, durationLabel,
-  formatDateJa, formatDateRangeJa, eachDate, el, overlaps, urgencyDays,
-  STATUS_LABEL, DOW_JA,
+  formatSpanJa, eachDate, el, overlaps, urgencyDays,
+  itemStart, itemEnd, totalMinutes, isAllDay,
+  STATUS_LABEL, INQUIRY_STATUS_LABEL, DOW_JA,
 } from './util.js';
 
 /* ==========================================================================
@@ -24,20 +29,28 @@ import {
    ========================================================================== */
 
 const state = {
-  view: 'month',          // 'month' | 'three'
+  view: 'month',          // 'month' | 'three' | 'board'
   anchor: new Date(),     // 月別＝表示中の月 / 3日間＝左端の日
-  filter: 'all',          // 'all' | 'confirmed' | 'tentative' | 'urgent'
-  months: [],             // 月別ビューが保持する月（連続）
-  days: [],               // 3日間ビューが保持する日（連続）
-  items: [],              // 表示範囲の予約
-  byDate: new Map(),      // 日付 → 予約[]（複数日予約は各日に展開）
-  notifyItems: [],        // お知らせ判定用の広い範囲の予約
+  filter: 'all',          // 'all' | 'confirmed' | 'tentative'
+  months: [],
+  days: [],
+  items: [],
+  byDate: new Map(),
+
+  inquiries: [],
+  boardFilter: 'all',
+  freshIds: new Set(),
+
+  notifyItems: [],
   notifications: [],
-  shownKeys: '',          // 自動ポップアップ済みのお知らせ集合
+  shownKeys: '',
+
   loading: 0,
   extending: false,
   editing: null,
   detail: null,
+  inquiryDetail: null,
+  fromInquiry: null,      // 相談からカレンダー化しているときの相談レコード
   pendingConflict: false,
 };
 
@@ -49,9 +62,14 @@ const $ = (sel) => document.querySelector(sel);
 
 const dom = {
   periodLabel: $('#period-label'),
+  navCluster: $('#nav-cluster'),
+  filterCluster: $('#filter-cluster'),
   loading: $('#loading-bar'),
   viewMonth: $('#view-month'),
   viewThree: $('#view-three'),
+  viewBoard: $('#view-board'),
+  btnNew: $('#btn-new'),
+  btnNewLabel: $('#btn-new-label'),
 
   notifBtn: $('#btn-notif'),
   notifBadge: $('#notif-badge'),
@@ -65,12 +83,23 @@ const dom = {
   formAlert: $('#form-alert'),
   formSubmit: $('#form-submit'),
   formDelete: $('#form-delete'),
-  durationLabel: $('#duration-label'),
+  fromInquiry: $('#from-inquiry'),
   spanLabel: $('#span-label'),
 
   overlayDetail: $('#overlay-detail'),
   detailBody: $('#detail-body'),
   detailConfirm: $('#detail-confirm'),
+
+  overlayInquiry: $('#overlay-inquiry'),
+  inquiryForm: $('#inquiry-form'),
+  inquiryTitle: $('#inquiry-title'),
+  inquiryAlert: $('#inquiry-alert'),
+  inquirySubmit: $('#inquiry-submit'),
+  inquiryDelete: $('#inquiry-delete'),
+
+  overlayIDetail: $('#overlay-inquiry-detail'),
+  idetailBody: $('#idetail-body'),
+  idetailSchedule: $('#idetail-schedule'),
 
   toastWrap: $('#toast-wrap'),
 };
@@ -106,7 +135,8 @@ function setLoading(delta) {
 
 function initMonths() {
   const base = startOfMonth(state.anchor);
-  state.months = [addMonths(base, -1), base, addMonths(base, 1)];
+  state.months = [];
+  for (let i = -MONTH_BUFFER; i <= MONTH_BUFFER; i++) state.months.push(addMonths(base, i));
 }
 
 function initDays() {
@@ -116,14 +146,14 @@ function initDays() {
 }
 
 function viewRange() {
-  if (state.view === 'month') {
-    if (!state.months.length) initMonths();
-    const first = monthCells(state.months[0])[0];
-    const lastCells = monthCells(state.months[state.months.length - 1]);
-    return [ymd(first), ymd(lastCells[lastCells.length - 1])];
+  if (state.view === 'three') {
+    if (!state.days.length) initDays();
+    return [ymd(state.days[0]), ymd(state.days[state.days.length - 1])];
   }
-  if (!state.days.length) initDays();
-  return [ymd(state.days[0]), ymd(state.days[state.days.length - 1])];
+  if (!state.months.length) initMonths();
+  const first = monthCells(state.months[0])[0];
+  const lastCells = monthCells(state.months[state.months.length - 1]);
+  return [ymd(first), ymd(lastCells[lastCells.length - 1])];
 }
 
 /* ==========================================================================
@@ -131,6 +161,8 @@ function viewRange() {
    ========================================================================== */
 
 async function loadView({ keepScroll = true } = {}) {
+  if (state.view === 'board') { render({ keepScroll }); return; }
+
   const [from, to] = viewRange();
   setLoading(1);
   try {
@@ -145,18 +177,33 @@ async function loadView({ keepScroll = true } = {}) {
   render({ keepScroll });
 }
 
+async function loadBoard({ rerender = true } = {}) {
+  setLoading(1);
+  try {
+    state.inquiries = await Inquiries.list();
+  } catch (err) {
+    state.inquiries = [];
+    reportError(err);
+  } finally {
+    setLoading(-1);
+  }
+  if (rerender && state.view === 'board') render();
+}
+
 async function loadNotifications() {
   const today = new Date();
   const from = ymd(addDays(today, -NOTIFY_PAST_DAYS));
   const to = ymd(addDays(today, NOTIFY_FUTURE_DAYS));
-  let rows;
+  let rows = [];
+  let inquiries = [];
   try {
-    rows = await Reservations.listRange(from, to);
+    [rows, inquiries] = await Promise.all([Reservations.listRange(from, to), Inquiries.list()]);
   } catch {
     return; // お知らせの取得失敗で画面を止めない
   }
   state.notifyItems = rows;
-  primeOnFirstRun(rows);
+  state.inquiries = inquiries;
+  primeOnFirstRun(rows, inquiries);
   refreshNotifications({ autoOpen: true });
 }
 
@@ -167,8 +214,6 @@ function indexItems() {
 
   for (const item of state.items) {
     item.__urgent = urgencyDays(item, today, URGENT_DAYS) !== null;
-
-    if (state.filter === 'urgent' && !item.__urgent) continue;
     if ((state.filter === 'confirmed' || state.filter === 'tentative') && item.status !== state.filter) continue;
 
     for (const key of eachDate(item.start_date, item.end_date)) {
@@ -189,7 +234,7 @@ function indexItems() {
    ========================================================================== */
 
 function refreshNotifications({ autoOpen = false } = {}) {
-  state.notifications = buildNotifications(state.notifyItems, todayYmd());
+  state.notifications = buildNotifications(state.notifyItems, state.inquiries, todayYmd());
   renderNotifications();
 
   const keys = state.notifications.map((n) => `${n.kind}:${n.key}`).sort().join(',');
@@ -197,9 +242,11 @@ function refreshNotifications({ autoOpen = false } = {}) {
     state.shownKeys = keys;
     openNotifications();
     const added = state.notifications.filter((n) => n.kind === 'new').length;
+    const board = state.notifications.filter((n) => n.kind === 'board').length;
     const urgent = state.notifications.filter((n) => n.kind === 'deadline').length;
     const parts = [];
     if (added) parts.push(`新しい予定 ${added} 件`);
+    if (board) parts.push(`掲示板 ${board} 件`);
     if (urgent) parts.push(`要確認の仮予約 ${urgent} 件`);
     if (parts.length) toast(`${parts.join(' / ')} があります`);
   }
@@ -208,6 +255,7 @@ function refreshNotifications({ autoOpen = false } = {}) {
 const NOTIF_KIND = {
   new: { label: '新規', cls: 'is-new' },
   updated: { label: '更新', cls: 'is-updated' },
+  board: { label: '掲示板', cls: 'is-board' },
   deadline: { label: '要確認', cls: 'is-deadline' },
 };
 
@@ -226,10 +274,16 @@ function renderNotifications() {
   dom.notifList.replaceChildren(...state.notifications.map((note) => {
     const meta = NOTIF_KIND[note.kind];
     const item = note.item;
-    const when = `${formatDateRangeJa(item.start_date, item.end_date)}　${hhmm(item.start_time)}–${hhmm(item.end_time)}`;
+
+    const when = note.isBoard
+      ? `希望時期：${item.desired_period || '未定'}`
+      : formatSpanJa(item);
+
     const sub = note.kind === 'deadline'
       ? (note.days === 0 ? '本日が実施日の仮予約です' : `実施まで残り ${note.days} 日の仮予約です`)
-      : `${STATUS_LABEL[item.status] || item.status}${item.organizer ? ` / ${item.organizer}` : ''}`;
+      : note.isBoard
+        ? `${INQUIRY_STATUS_LABEL[item.status] || item.status}${item.organizer ? ` / ${item.organizer}` : ''}`
+        : `${STATUS_LABEL[item.status] || item.status}${item.organizer ? ` / ${item.organizer}` : ''}`;
 
     return el('div', { class: `notif-item ${meta.cls}` }, [
       el('button', {
@@ -239,7 +293,8 @@ function renderNotifications() {
           markRead([[note.key, note.sig]]);
           refreshNotifications();
           closeNotifications();
-          openDetail(item);
+          if (note.isBoard) { setView('board'); openInquiryDetail(item); }
+          else openDetail(item);
         },
       }, [
         el('span', { class: `notif-kind ${meta.cls}`, text: meta.label }),
@@ -253,7 +308,6 @@ function renderNotifications() {
         class: 'notif-dismiss',
         type: 'button',
         title: '既読にする',
-        'aria-label': '既読にする',
         text: '既読',
         onclick: () => { markRead([[note.key, note.sig]]); refreshNotifications(); },
       }),
@@ -282,9 +336,9 @@ function markAllNotificationsRead() {
   toast('すべて既読にしました');
 }
 
-/** 詳細を開いたらその予約は既読扱いにする */
-function markItemRead(item) {
-  const note = state.notifications.find((n) => n.kind !== 'deadline' && n.item.id === item.id);
+function markItemRead(item, isBoard = false) {
+  const note = state.notifications.find((n) => n.kind !== 'deadline'
+    && Boolean(n.isBoard) === isBoard && n.item.id === item.id);
   if (!note) return;
   markRead([[note.key, note.sig]]);
   refreshNotifications();
@@ -295,19 +349,23 @@ function markItemRead(item) {
    ========================================================================== */
 
 function periodText() {
-  if (state.view === 'month') {
-    return { main: monthLabel(state.anchor), sub: '' };
-  }
+  if (state.view === 'board') return { main: '', sub: '' };
+  if (state.view === 'month') return { main: monthLabel(state.anchor), sub: '' };
+
   const a = state.anchor;
   const b = addDays(a, VISIBLE_DAYS - 1);
-  const sameMonth = a.getMonth() === b.getMonth();
-  const main = sameMonth
+  const main = a.getMonth() === b.getMonth()
     ? monthLabel(a)
     : `${a.getFullYear()}年${a.getMonth() + 1}–${b.getMonth() + 1}月`;
   return { main, sub: `${a.getDate()}日（${DOW_JA[a.getDay()]}）– ${b.getDate()}日（${DOW_JA[b.getDay()]}）` };
 }
 
 function renderChrome() {
+  const isBoard = state.view === 'board';
+  dom.navCluster.hidden = isBoard;
+  dom.filterCluster.hidden = isBoard;
+  dom.btnNewLabel.textContent = isBoard ? '相談を貼る' : '新規予約';
+
   const { main, sub } = periodText();
   dom.periodLabel.replaceChildren(
     document.createTextNode(main),
@@ -320,12 +378,14 @@ function renderChrome() {
     b.setAttribute('aria-selected', String(on));
   });
 
-  document.querySelectorAll('.chip-filter').forEach((b) => {
+  dom.filterCluster.querySelectorAll('.chip-filter').forEach((b) => {
     b.classList.toggle('is-active', b.dataset.filter === state.filter);
   });
+
+  syncHeaderHeight();
 }
 
-function viewCtx() {
+function calendarCtx() {
   return {
     byDate: state.byDate,
     todayStr: todayYmd(),
@@ -343,32 +403,38 @@ function viewCtx() {
 function render({ keepScroll = true } = {}) {
   renderChrome();
 
-  if (state.view === 'month') {
-    dom.viewMonth.hidden = false;
-    dom.viewThree.hidden = true;
+  dom.viewMonth.hidden = state.view !== 'month';
+  dom.viewThree.hidden = state.view !== 'three';
+  dom.viewBoard.hidden = state.view !== 'board';
 
+  if (state.view === 'month') {
     const saved = keepScroll ? captureMonthScroll(dom.viewMonth) : null;
     renderMonths(dom.viewMonth, {
-      ...viewCtx(),
+      ...calendarCtx(),
       months: state.months,
-      onEdge: onMonthEdge,
-      onVisibleMonth: onVisibleMonth,
+      onVisibleMonth,
     });
     if (saved) restoreMonthScroll(dom.viewMonth, saved);
     else scrollToMonth(dom.viewMonth, monthKey(state.anchor));
-  } else {
-    dom.viewMonth.hidden = true;
-    dom.viewThree.hidden = false;
-
+  } else if (state.view === 'three') {
     const saved = keepScroll ? captureStripScroll(dom.viewThree) : null;
     renderDayStrip(dom.viewThree, {
-      ...viewCtx(),
+      ...calendarCtx(),
       days: state.days,
       onEdge: onStripEdge,
-      onVisibleDays: onVisibleDays,
+      onVisibleDays,
     });
     if (saved && saved.key) restoreStripScroll(dom.viewThree, saved);
     else scrollToDay(dom.viewThree, ymd(state.anchor));
+  } else {
+    renderBoard(dom.viewBoard, {
+      inquiries: state.inquiries,
+      filter: state.boardFilter,
+      freshIds: state.freshIds,
+      onOpen: openInquiryDetail,
+      onNew: () => openInquiryForm(),
+      onFilter: (f) => { state.boardFilter = f; render(); },
+    });
   }
 }
 
@@ -376,13 +442,40 @@ function render({ keepScroll = true } = {}) {
    スクロールによる期間の継ぎ足し
    ========================================================================== */
 
+let bufferTimer = null;
+
 function onVisibleMonth(key) {
-  const [y, m] = key.split('-').map(Number);
-  const d = new Date(y, m - 1, 1);
-  if (monthKey(state.anchor) === key) return;
-  state.anchor = d;
-  renderChrome();
-  syncHash();
+  if (monthKey(state.anchor) !== key) {
+    const [y, m] = key.split('-').map(Number);
+    state.anchor = new Date(y, m - 1, 1);
+    renderChrome();
+    syncHash();
+  }
+  clearTimeout(bufferTimer);
+  bufferTimer = setTimeout(ensureMonthBuffer, 320);
+}
+
+/** 現在月の前後に MONTH_BUFFER か月ぶんの余白を保つ */
+async function ensureMonthBuffer() {
+  if (state.view !== 'month' || state.extending || !state.months.length) return;
+  const idx = state.months.findIndex((m) => monthKey(m) === monthKey(state.anchor));
+  if (idx < 0) return;
+
+  const needBefore = MONTH_BUFFER - idx;
+  const needAfter = MONTH_BUFFER - (state.months.length - 1 - idx);
+  if (needBefore <= 0 && needAfter <= 0) return;
+  if (state.months.length >= MONTH_MAX) return;
+
+  state.extending = true;
+  try {
+    const months = [...state.months];
+    for (let i = 0; i < needBefore; i++) months.unshift(addMonths(months[0], -1));
+    for (let i = 0; i < needAfter; i++) months.push(addMonths(months[months.length - 1], 1));
+    state.months = months;
+    await loadView();
+  } finally {
+    setTimeout(() => { state.extending = false; }, 200);
+  }
 }
 
 function onVisibleDays(key) {
@@ -390,22 +483,6 @@ function onVisibleDays(key) {
   state.anchor = parseYmd(key);
   renderChrome();
   syncHash();
-}
-
-async function onMonthEdge(edge) {
-  if (state.extending || state.months.length >= MONTH_MAX) return;
-  state.extending = true;
-  try {
-    if (edge === 'bottom') {
-      state.months = [...state.months, addMonths(state.months[state.months.length - 1], 1)];
-    } else {
-      state.months = [addMonths(state.months[0], -1), ...state.months];
-    }
-    await loadView();
-  } finally {
-    // 連続発火を抑えるため、描画が落ち着いてから解除する
-    setTimeout(() => { state.extending = false; }, 250);
-  }
 }
 
 async function onStripEdge(edge) {
@@ -439,6 +516,8 @@ function goToDay(dateStr) {
 }
 
 async function step(dir) {
+  if (state.view === 'board') return;
+
   if (state.view === 'month') {
     const target = addMonths(state.anchor, dir);
     const key = monthKey(target);
@@ -468,6 +547,7 @@ async function step(dir) {
 }
 
 function goToday() {
+  if (state.view === 'board') return;
   state.anchor = new Date();
   if (state.view === 'month') initMonths();
   else initDays();
@@ -479,18 +559,19 @@ function setView(view) {
   if (state.view === view) return;
   state.view = view;
   if (view === 'month') initMonths();
-  else initDays();
+  else if (view === 'three') initDays();
   syncHash();
-  loadView({ keepScroll: false });
+  if (view === 'board') { render(); loadBoard(); }
+  else loadView({ keepScroll: false });
 }
 
-/** 画面状態を URL ハッシュに保存（リロードしても同じ場所に戻る） */
 function syncHash() {
-  const h = `#${state.view}/${ymd(state.anchor)}`;
+  const h = state.view === 'board' ? '#board' : `#${state.view}/${ymd(state.anchor)}`;
   if (location.hash !== h) history.replaceState(null, '', h);
 }
 
 function restoreFromHash() {
+  if (/^#board$/.test(location.hash || '')) { state.view = 'board'; return; }
   const m = /^#(month|three)\/(\d{4}-\d{2}-\d{2})$/.exec(location.hash || '');
   if (!m) return;
   state.view = m[1];
@@ -511,30 +592,46 @@ function fillTimeSelects() {
     .map((t) => el('option', { value: t, text: t })));
 }
 
-function updateDuration() {
-  const s = toMin(dom.form.elements.start_time.value);
-  const e = toMin(dom.form.elements.end_time.value);
-  dom.durationLabel.textContent = e > s
-    ? `1日あたり ${durationLabel(e - s)}`
-    : '終了時刻は開始時刻より後にしてください';
+function applyAllDay() {
+  const f = dom.form;
+  const on = f.elements.all_day.checked;
+  f.elements.start_time.disabled = on;
+  f.elements.end_time.disabled = on;
+  if (on) {
+    f.elements.start_time.value = '00:00';
+    f.elements.end_time.value = '24:00';
+  }
+  updateSpan();
+}
+
+function currentFormSpan() {
+  const f = dom.form;
+  return {
+    start_date: f.elements.start_date.value,
+    end_date: f.elements.end_date.value || f.elements.start_date.value,
+    start_time: f.elements.start_time.value,
+    end_time: f.elements.end_time.value,
+  };
 }
 
 function updateSpan() {
-  const s = dom.form.elements.start_date.value;
-  const e = dom.form.elements.end_date.value;
-  if (!s || !e) { dom.spanLabel.textContent = ''; return; }
-  if (e < s) { dom.spanLabel.textContent = '終了日は開始日以降にしてください'; return; }
-  const days = eachDate(s, e).length;
+  const v = currentFormSpan();
+  if (!v.start_date || !v.end_date) { dom.spanLabel.textContent = ''; return; }
+
+  if (itemEnd(v) <= itemStart(v)) {
+    dom.spanLabel.textContent = '終了は開始より後にしてください';
+    dom.spanLabel.classList.add('is-warn');
+    return;
+  }
+  dom.spanLabel.classList.remove('is-warn');
+
+  const days = eachDate(v.start_date, v.end_date).length;
+  const total = durationLabel(totalMinutes(v));
   dom.spanLabel.textContent = days === 1
-    ? '単日利用'
-    : `${days}日間の利用（期間中の各日、下記の時間帯で利用します）`;
+    ? `${formatSpanJa({ ...v })}（${total}）`
+    : `${days}日間にまたがる利用（通し ${total}）`;
 }
 
-/**
- * フォームを開く。
- * @param {object} preset 初期値（新規のとき）
- * @param {object|null} item 編集対象
- */
 function openForm(preset = {}, item = null) {
   const f = dom.form;
   state.editing = item;
@@ -542,13 +639,30 @@ function openForm(preset = {}, item = null) {
   dom.formAlert.hidden = true;
   dom.formAlert.textContent = '';
 
+  state.fromInquiry = preset.inquiry || null;
+  if (state.fromInquiry) {
+    dom.fromInquiry.hidden = false;
+    dom.fromInquiry.replaceChildren(
+      el('b', { text: '掲示板の相談から作成中' }),
+      el('span', { text: `「${state.fromInquiry.title}」に日程を入れると、掲示板の付箋に「日程確定」が押されます。` }),
+    );
+  } else {
+    dom.fromInquiry.hidden = true;
+  }
+
   const src = item || {
     status: 'tentative',
     start_date: preset.start_date || todayYmd(),
     end_date: preset.end_date || preset.start_date || todayYmd(),
     start_time: preset.start_time || '18:00',
     end_time: preset.end_time || '20:00',
-    title: '', purpose: '', organizer: '', contact: '', staff: '', headcount: '', notes: '',
+    title: preset.title || '',
+    purpose: preset.purpose || '',
+    organizer: preset.organizer || '',
+    contact: preset.contact || '',
+    staff: preset.staff || '',
+    headcount: preset.headcount ?? '',
+    notes: preset.notes || '',
   };
 
   f.elements.id.value = item?.id || '';
@@ -557,6 +671,7 @@ function openForm(preset = {}, item = null) {
   f.elements.end_date.value = src.end_date || src.start_date || '';
   f.elements.start_time.value = hhmm(src.start_time);
   f.elements.end_time.value = hhmm(src.end_time);
+  f.elements.all_day.checked = isAllDay(src);
   f.elements.purpose.value = src.purpose || '';
   f.elements.organizer.value = src.organizer || '';
   f.elements.contact.value = src.contact || '';
@@ -567,8 +682,7 @@ function openForm(preset = {}, item = null) {
 
   dom.formTitle.textContent = item ? '予約を編集' : '新規予約';
   dom.formDelete.hidden = !item;
-  updateDuration();
-  updateSpan();
+  applyAllDay();
 
   dom.overlayForm.hidden = false;
   setTimeout(() => f.elements.title.focus(), 30);
@@ -577,17 +691,15 @@ function openForm(preset = {}, item = null) {
 function closeForm() {
   dom.overlayForm.hidden = true;
   state.editing = null;
+  state.fromInquiry = null;
   state.pendingConflict = false;
 }
 
 function readForm() {
   const f = dom.form;
   return {
+    ...currentFormSpan(),
     title: f.elements.title.value.trim(),
-    start_date: f.elements.start_date.value,
-    end_date: f.elements.end_date.value || f.elements.start_date.value,
-    start_time: f.elements.start_time.value,
-    end_time: f.elements.end_time.value,
     status: f.querySelector('input[name="status"]:checked')?.value || 'tentative',
     purpose: f.elements.purpose.value.trim(),
     organizer: f.elements.organizer.value.trim(),
@@ -601,15 +713,14 @@ function readForm() {
 function validate(v) {
   const errors = [];
   if (!v.title) errors.push('・件名を入力してください。');
-  if (!v.start_date) errors.push('・利用日（開始）を選択してください。');
-  if (!v.end_date) errors.push('・利用日（終了）を選択してください。');
-  if (v.start_date && v.end_date && v.end_date < v.start_date) {
-    errors.push('・終了日は開始日以降にしてください。');
-  }
+  if (!v.start_date) errors.push('・開始日を選択してください。');
+  if (!v.end_date) errors.push('・終了日を選択してください。');
   if (!v.purpose) errors.push('・利用内容を入力してください。');
-  if (toMin(v.end_time) <= toMin(v.start_time)) errors.push('・終了時刻は開始時刻より後にしてください。');
+  if (v.start_date && v.end_date && itemEnd(v) <= itemStart(v)) {
+    errors.push('・終了日時は開始日時より後にしてください。');
+  }
   if (toMin(v.start_time) % SLOT_MINUTES || toMin(v.end_time) % SLOT_MINUTES) {
-    errors.push(`・時間は${SLOT_MINUTES}分単位で指定してください。`);
+    errors.push(`・時刻は${SLOT_MINUTES}分単位で指定してください。`);
   }
   if (v.headcount !== null && (!Number.isFinite(v.headcount) || v.headcount < 0)) {
     errors.push('・人数は 0 以上の数値で入力してください。');
@@ -617,7 +728,7 @@ function validate(v) {
   return errors;
 }
 
-/** 期間・時間帯が重なる他の予約を探す */
+/** 期間が重なる他の予約を探す */
 async function findConflicts(v, excludeId) {
   let rows;
   try {
@@ -625,15 +736,9 @@ async function findConflicts(v, excludeId) {
   } catch {
     return []; // 重複チェックのための通信失敗で保存自体は止めない
   }
-  const s = toMin(v.start_time);
-  const e = toMin(v.end_time);
-  const mine = new Set(eachDate(v.start_date, v.end_date));
-
-  return rows.filter((o) => {
-    if (o.id === excludeId) return false;
-    if (!overlaps(s, e, toMin(o.start_time), toMin(o.end_time))) return false;
-    return eachDate(o.start_date, o.end_date).some((d) => mine.has(d));
-  });
+  const s = itemStart(v);
+  const e = itemEnd(v);
+  return rows.filter((o) => o.id !== excludeId && overlaps(s, e, itemStart(o), itemEnd(o)));
 }
 
 function showAlert(text) {
@@ -657,8 +762,7 @@ async function submitForm() {
   if (!state.pendingConflict) {
     const conflicts = await findConflicts(v, id);
     if (conflicts.length) {
-      const lines = conflicts.map((c) => `・${formatDateRangeJa(c.start_date, c.end_date)} `
-        + `${hhmm(c.start_time)}–${hhmm(c.end_time)}　${c.title}（${STATUS_LABEL[c.status] || c.status}）`);
+      const lines = conflicts.map((c) => `・${formatSpanJa(c)}　${c.title}（${STATUS_LABEL[c.status] || c.status}）`);
       state.pendingConflict = true;
       showAlert(
         `同じ時間帯に ${conflicts.length} 件の予約があります。\n${lines.join('\n')}\n`
@@ -671,11 +775,32 @@ async function submitForm() {
   dom.formSubmit.disabled = true;
   try {
     const saved = id ? await Reservations.update(id, v) : await Reservations.create(v);
-    // 自分の操作でお知らせが出ないよう、保存直後に既読へ倒す
     if (saved?.id) markRead([[saved.id, signature(saved)]]);
-    toast(id ? '予約を更新しました' : '予約を登録しました');
+
+    // 掲示板の相談から作成した場合は、その付箋を「日程確定」にする
+    const inquiry = state.fromInquiry;
+    if (inquiry && saved?.id) {
+      try {
+        const updated = await Inquiries.update(inquiry.id, {
+          ...inquiry, status: 'scheduled', reservation_id: saved.id,
+        });
+        if (updated) markRead([[boardKey(updated), boardSignature(updated)]]);
+      } catch (err) {
+        reportError(err);
+      }
+    }
+
+    toast(id ? '予約を更新しました' : inquiry ? 'カレンダーに登録しました' : '予約を登録しました');
+    const landing = saved?.start_date || v.start_date;
     closeForm();
-    await Promise.all([loadView(), loadNotifications()]);
+
+    if (inquiry) {
+      state.view = 'month';
+      state.anchor = parseYmd(landing);
+      initMonths();
+      syncHash();
+    }
+    await Promise.all([loadView({ keepScroll: !inquiry }), loadBoard({ rerender: false }), loadNotifications()]);
   } catch (err) {
     reportError(err);
     showAlert(err instanceof ApiError ? `保存できませんでした。\n${err.message}` : '保存できませんでした。');
@@ -711,7 +836,6 @@ function detailRow(label, value) {
 
 function openDetail(item) {
   state.detail = item;
-  const mins = toMin(item.end_time) - toMin(item.start_time);
   const days = eachDate(item.start_date, item.end_date).length;
   const urgent = urgencyDays(item, todayYmd(), URGENT_DAYS);
 
@@ -730,10 +854,9 @@ function openDetail(item) {
       : null,
     el('h3', { class: 'detail-h', text: item.title || '(無題)' }),
     el('div', { class: 'detail-when' }, [
-      el('div', { class: 'detail-when-date', text: formatDateRangeJa(item.start_date, item.end_date) }),
+      el('div', { class: 'detail-when-date', text: formatSpanJa(item) }),
       el('div', { class: 'detail-when-time' }, [
-        document.createTextNode(`${days > 1 ? '各日 ' : ''}${hhmm(item.start_time)} – ${hhmm(item.end_time)}`),
-        el('span', { class: 'detail-dur', text: `${durationLabel(mins)}${days > 1 ? ` × ${days}日` : ''}` }),
+        el('span', { class: 'detail-dur', text: `通し ${durationLabel(totalMinutes(item))}${days > 1 ? ` / ${days}日間` : ''}` }),
       ]),
     ]),
     el('dl', { class: 'detail-list' }, [
@@ -778,6 +901,158 @@ async function confirmReservation() {
 }
 
 /* ==========================================================================
+   掲示板（相談）
+   ========================================================================== */
+
+function openInquiryForm(item = null) {
+  const f = dom.inquiryForm;
+  dom.inquiryAlert.hidden = true;
+
+  const src = item || {
+    title: '', desired_period: '', purpose: '',
+    organizer: '', contact: '', staff: '', headcount: '', notes: '',
+  };
+
+  f.elements.id.value = item?.id || '';
+  f.elements.title.value = src.title || '';
+  f.elements.desired_period.value = src.desired_period || '';
+  f.elements.purpose.value = src.purpose || '';
+  f.elements.organizer.value = src.organizer || '';
+  f.elements.contact.value = src.contact || '';
+  f.elements.staff.value = src.staff || '';
+  f.elements.headcount.value = src.headcount ?? '';
+  f.elements.notes.value = src.notes || '';
+
+  dom.inquiryTitle.textContent = item ? '相談を編集' : '相談を貼る';
+  dom.inquirySubmit.textContent = item ? '保存' : '貼る';
+  dom.inquiryDelete.hidden = !item;
+
+  dom.overlayInquiry.hidden = false;
+  setTimeout(() => f.elements.title.focus(), 30);
+}
+
+function closeInquiryForm() {
+  dom.overlayInquiry.hidden = true;
+}
+
+async function submitInquiry() {
+  const f = dom.inquiryForm;
+  const v = {
+    title: f.elements.title.value.trim(),
+    desired_period: f.elements.desired_period.value.trim(),
+    purpose: f.elements.purpose.value.trim(),
+    organizer: f.elements.organizer.value.trim(),
+    contact: f.elements.contact.value.trim(),
+    staff: f.elements.staff.value.trim(),
+    headcount: f.elements.headcount.value === '' ? null : Number(f.elements.headcount.value),
+    notes: f.elements.notes.value.trim(),
+  };
+
+  const errors = [];
+  if (!v.title) errors.push('・件名を入力してください。');
+  if (!v.purpose) errors.push('・利用内容を入力してください。');
+  if (errors.length) {
+    dom.inquiryAlert.textContent = `入力内容をご確認ください。\n${errors.join('\n')}`;
+    dom.inquiryAlert.hidden = false;
+    return;
+  }
+
+  const id = f.elements.id.value || null;
+  dom.inquirySubmit.disabled = true;
+  try {
+    const saved = id ? await Inquiries.update(id, v) : await Inquiries.create(v);
+    if (saved?.id) {
+      markRead([[boardKey(saved), boardSignature(saved)]]);
+      if (!id) {
+        state.freshIds.add(saved.id);
+        setTimeout(() => { state.freshIds.delete(saved.id); }, 1500);
+      }
+    }
+    toast(id ? '相談を更新しました' : '掲示板に貼りました');
+    closeInquiryForm();
+    closeInquiryDetail();
+    state.view = 'board';
+    syncHash();
+    await loadBoard();
+    loadNotifications();
+  } catch (err) {
+    reportError(err);
+    dom.inquiryAlert.textContent = err instanceof ApiError ? `保存できませんでした。\n${err.message}` : '保存できませんでした。';
+    dom.inquiryAlert.hidden = false;
+  } finally {
+    dom.inquirySubmit.disabled = false;
+  }
+}
+
+async function deleteInquiry(id) {
+  if (!window.confirm('この相談を削除します。よろしいですか？')) return;
+  try {
+    await Inquiries.remove(id);
+    toast('相談を剥がしました');
+    closeInquiryForm();
+    closeInquiryDetail();
+    await loadBoard();
+    loadNotifications();
+  } catch (err) {
+    reportError(err);
+  }
+}
+
+function openInquiryDetail(item) {
+  state.inquiryDetail = item;
+
+  const nodes = [
+    el('span', { class: `detail-status is-inq-${item.status}`, text: INQUIRY_STATUS_LABEL[item.status] || item.status }),
+    el('h3', { class: 'detail-h', text: item.title || '(無題)' }),
+    el('div', { class: 'detail-when' }, [
+      el('div', { class: 'detail-when-date', text: `希望時期：${item.desired_period || '未定・相談したい'}` }),
+    ]),
+    el('dl', { class: 'detail-list' }, [
+      detailRow('利用内容', item.purpose),
+      detailRow('利用者・団体名', item.organizer),
+      detailRow('連絡先', item.contact),
+      detailRow('チカ堂担当者', item.staff),
+      detailRow('想定人数', item.headcount ? `${item.headcount}名` : ''),
+      detailRow('備考', item.notes),
+    ].filter(Boolean)),
+    item.updated_at || item.created_at
+      ? el('div', {
+        class: 'detail-meta',
+        text: `最終更新 ${new Date(item.updated_at || item.created_at).toLocaleString('ja-JP')}`,
+      })
+      : null,
+  ];
+
+  dom.idetailBody.replaceChildren(...nodes.filter(Boolean));
+  dom.idetailSchedule.textContent = item.status === 'scheduled'
+    ? 'もう一度カレンダーへ' : '日程を決めてカレンダーへ';
+  dom.overlayIDetail.hidden = false;
+  markItemRead(item, true);
+}
+
+function closeInquiryDetail() {
+  dom.overlayIDetail.hidden = true;
+  state.inquiryDetail = null;
+}
+
+function scheduleInquiry() {
+  const q = state.inquiryDetail;
+  if (!q) return;
+  closeInquiryDetail();
+  openForm({
+    inquiry: q,
+    title: q.title,
+    purpose: q.purpose,
+    organizer: q.organizer,
+    contact: q.contact,
+    staff: q.staff,
+    headcount: q.headcount,
+    notes: q.notes,
+    start_date: todayYmd(),
+  });
+}
+
+/* ==========================================================================
    イベント登録
    ========================================================================== */
 
@@ -785,13 +1060,16 @@ function bind() {
   $('#btn-prev').addEventListener('click', () => step(-1));
   $('#btn-next').addEventListener('click', () => step(1));
   $('#btn-today').addEventListener('click', goToday);
-  $('#btn-new').addEventListener('click', () => openForm({ start_date: ymd(state.anchor) }));
+  dom.btnNew.addEventListener('click', () => {
+    if (state.view === 'board') openInquiryForm();
+    else openForm({ start_date: ymd(state.anchor) });
+  });
 
   document.querySelectorAll('.seg-btn').forEach((b) => {
     b.addEventListener('click', () => setView(b.dataset.view));
   });
 
-  document.querySelectorAll('.chip-filter').forEach((b) => {
+  dom.filterCluster.querySelectorAll('.chip-filter').forEach((b) => {
     b.addEventListener('click', () => {
       state.filter = b.dataset.filter;
       indexItems();
@@ -812,7 +1090,7 @@ function bind() {
     closeNotifications();
   });
 
-  /* フォーム */
+  /* 予約フォーム */
   $('#form-close').addEventListener('click', closeForm);
   $('#form-cancel').addEventListener('click', closeForm);
   dom.formSubmit.addEventListener('click', submitForm);
@@ -824,23 +1102,26 @@ function bind() {
   dom.form.addEventListener('submit', (e) => { e.preventDefault(); submitForm(); });
   dom.form.addEventListener('input', () => { state.pendingConflict = false; });
 
+  dom.form.elements.all_day.addEventListener('change', applyAllDay);
   dom.form.elements.start_date.addEventListener('change', () => {
-    const s = dom.form.elements.start_date.value;
-    const e = dom.form.elements.end_date.value;
-    if (!e || e < s) dom.form.elements.end_date.value = s;
+    const f = dom.form;
+    if (!f.elements.end_date.value || f.elements.end_date.value < f.elements.start_date.value) {
+      f.elements.end_date.value = f.elements.start_date.value;
+    }
     updateSpan();
   });
   dom.form.elements.end_date.addEventListener('change', updateSpan);
-
   dom.form.elements.start_time.addEventListener('change', () => {
-    const s = toMin(dom.form.elements.start_time.value);
-    const e = toMin(dom.form.elements.end_time.value);
-    if (e <= s) dom.form.elements.end_time.value = toHHMM(Math.min(s + SLOT_MINUTES * 2, 24 * 60));
-    updateDuration();
+    const f = dom.form;
+    if (f.elements.start_date.value === f.elements.end_date.value
+      && toMin(f.elements.end_time.value) <= toMin(f.elements.start_time.value)) {
+      f.elements.end_time.value = toHHMM(Math.min(toMin(f.elements.start_time.value) + SLOT_MINUTES * 2, 24 * 60));
+    }
+    updateSpan();
   });
-  dom.form.elements.end_time.addEventListener('change', updateDuration);
+  dom.form.elements.end_time.addEventListener('change', updateSpan);
 
-  /* 詳細 */
+  /* 予約詳細 */
   $('#detail-close').addEventListener('click', closeDetail);
   $('#detail-edit').addEventListener('click', () => {
     const item = state.detail;
@@ -852,11 +1133,32 @@ function bind() {
   });
   dom.detailConfirm.addEventListener('click', confirmReservation);
 
-  dom.overlayForm.addEventListener('mousedown', (e) => {
-    if (e.target === dom.overlayForm) closeForm();
+  /* 掲示板 */
+  $('#inquiry-close').addEventListener('click', closeInquiryForm);
+  $('#inquiry-cancel').addEventListener('click', closeInquiryForm);
+  dom.inquirySubmit.addEventListener('click', submitInquiry);
+  dom.inquiryForm.addEventListener('submit', (e) => { e.preventDefault(); submitInquiry(); });
+  dom.inquiryDelete.addEventListener('click', () => {
+    const id = dom.inquiryForm.elements.id.value;
+    if (id) deleteInquiry(id);
   });
-  dom.overlayDetail.addEventListener('mousedown', (e) => {
-    if (e.target === dom.overlayDetail) closeDetail();
+
+  $('#idetail-close').addEventListener('click', closeInquiryDetail);
+  $('#idetail-edit').addEventListener('click', () => {
+    const item = state.inquiryDetail;
+    closeInquiryDetail();
+    if (item) openInquiryForm(item);
+  });
+  $('#idetail-delete').addEventListener('click', () => {
+    if (state.inquiryDetail) deleteInquiry(state.inquiryDetail.id);
+  });
+  dom.idetailSchedule.addEventListener('click', scheduleInquiry);
+
+  /* オーバーレイの外側クリック */
+  [[dom.overlayForm, closeForm], [dom.overlayDetail, closeDetail],
+    [dom.overlayInquiry, closeInquiryForm], [dom.overlayIDetail, closeInquiryDetail],
+  ].forEach(([overlay, close]) => {
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   });
 
   /* キーボード */
@@ -864,10 +1166,13 @@ function bind() {
     if (e.key === 'Escape') {
       if (!dom.overlayForm.hidden) closeForm();
       else if (!dom.overlayDetail.hidden) closeDetail();
+      else if (!dom.overlayInquiry.hidden) closeInquiryForm();
+      else if (!dom.overlayIDetail.hidden) closeInquiryDetail();
       else if (!dom.notifPop.hidden) closeNotifications();
       return;
     }
-    if (!dom.overlayForm.hidden || !dom.overlayDetail.hidden) return;
+    if (!dom.overlayForm.hidden || !dom.overlayDetail.hidden
+      || !dom.overlayInquiry.hidden || !dom.overlayIDetail.hidden) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof Element && e.target.matches('input, textarea, select')) return;
 
@@ -876,16 +1181,17 @@ function bind() {
     else if (e.key === 't') goToday();
     else if (e.key === 'm') setView('month');
     else if (e.key === 'd') setView('three');
+    else if (e.key === 'b') setView('board');
     else if (e.key === 'n') { dom.notifPop.hidden ? openNotifications() : closeNotifications(); }
   });
 
   window.addEventListener('hashchange', () => {
     restoreFromHash();
-    if (state.view === 'month') initMonths(); else initDays();
+    if (state.view === 'month') initMonths();
+    else if (state.view === 'three') initDays();
     loadView({ keepScroll: false });
   });
 
-  /* 画面幅が変わると列幅・1時間の高さが変わるため描き直す */
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
@@ -908,14 +1214,15 @@ bind();
 syncHash();
 renderNotifications();
 loadView({ keepScroll: false });
+loadBoard({ rerender: state.view === 'board' });
 loadNotifications();
 
 // 現在時刻ラインの更新
 setInterval(() => { if (state.view === 'three') render(); }, 60_000);
 
-// 他の端末で追加・更新された予定を拾う
+// 他の端末で追加・更新された予定や相談を拾う
 setInterval(() => {
-  if (!dom.overlayForm.hidden) return; // 入力中は邪魔しない
+  if (!dom.overlayForm.hidden || !dom.overlayInquiry.hidden) return; // 入力中は邪魔しない
   loadNotifications();
   loadView();
 }, POLL_INTERVAL_MS);

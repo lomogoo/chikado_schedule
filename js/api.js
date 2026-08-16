@@ -3,7 +3,7 @@
  * 依存ライブラリ無しで動くよう、fetch を直接叩いています。
  */
 
-import { SUPABASE_URL, SUPABASE_KEY, TABLE } from './config.js';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, BOARD_TABLE } from './config.js';
 
 const REST = `${SUPABASE_URL}/rest/v1`;
 
@@ -14,7 +14,14 @@ export const FIELDS = [
   'organizer', 'contact', 'staff', 'headcount', 'notes',
 ];
 
+/** 相談（掲示板）で扱う列 */
+export const BOARD_FIELDS = [
+  'title', 'desired_period', 'purpose', 'status',
+  'organizer', 'contact', 'staff', 'headcount', 'notes', 'reservation_id',
+];
+
 const SELECT = ['id', ...FIELDS, 'created_at', 'updated_at'].join(',');
+const BOARD_SELECT = ['id', ...BOARD_FIELDS, 'created_at', 'updated_at'].join(',');
 
 function baseHeaders(extra = {}) {
   return {
@@ -55,30 +62,64 @@ async function request(path, options = {}) {
 }
 
 /** 送信前に、DB のカラム型に合うよう値を整える */
-function normalize(input) {
+function normalize(input, fields) {
   const out = {};
-  for (const key of FIELDS) {
+  for (const key of fields) {
     if (!(key in input)) continue;
     let v = input[key];
 
     if (typeof v === 'string') v = v.trim();
     if (v === '') v = null;
-
     if (key === 'headcount') v = v === null ? null : Number(v);
 
     out[key] = v;
   }
-  // 終了日の未指定は開始日と同じ（単日利用）とみなす
-  if (out.start_date && !out.end_date) out.end_date = out.start_date;
   return out;
 }
 
+/** 汎用の CRUD を組み立てる */
+function makeResource(table, fields, select) {
+  return {
+    async create(input) {
+      const rows = await request(`/${table}`, {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(normalize(input, fields)),
+      });
+      return rows?.[0] ?? null;
+    },
+
+    async update(id, input) {
+      const body = { ...normalize(input, fields), updated_at: new Date().toISOString() };
+      const rows = await request(`/${table}?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body),
+      });
+      return rows?.[0] ?? null;
+    },
+
+    async remove(id) {
+      await request(`/${table}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    async all(order) {
+      const q = new URLSearchParams();
+      q.append('select', select);
+      q.append('order', order);
+      return (await request(`/${table}?${q}`)) || [];
+    },
+  };
+}
+
+const reservationResource = makeResource(TABLE, FIELDS, SELECT);
+
 export const Reservations = {
+  ...reservationResource,
+
   /**
    * 期間に「かかっている」予約をすべて取得する。
    * 複数日にまたがる予約も拾えるよう、期間の重なりで判定している。
-   * @param {string} fromDate 'YYYY-MM-DD'
-   * @param {string} toDate   'YYYY-MM-DD'
    */
   async listRange(fromDate, toDate) {
     const q = new URLSearchParams();
@@ -89,26 +130,18 @@ export const Reservations = {
     return (await request(`/${TABLE}?${q}`)) || [];
   },
 
+  /** 終了日を省略した場合は開始日と同じ（単日利用）とみなして作成する */
   async create(input) {
-    const rows = await request(`/${TABLE}`, {
-      method: 'POST',
-      headers: { Prefer: 'return=representation' },
-      body: JSON.stringify(normalize(input)),
-    });
-    return rows?.[0] ?? null;
+    const v = { ...input };
+    if (v.start_date && !v.end_date) v.end_date = v.start_date;
+    return reservationResource.create(v);
   },
+};
 
-  async update(id, input) {
-    const body = { ...normalize(input), updated_at: new Date().toISOString() };
-    const rows = await request(`/${TABLE}?id=eq.${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { Prefer: 'return=representation' },
-      body: JSON.stringify(body),
-    });
-    return rows?.[0] ?? null;
-  },
+export const Inquiries = {
+  ...makeResource(BOARD_TABLE, BOARD_FIELDS, BOARD_SELECT),
 
-  async remove(id) {
-    await request(`/${TABLE}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  async list() {
+    return this.all('created_at.desc');
   },
 };

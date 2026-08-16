@@ -4,14 +4,21 @@
  * 画面には 3 日ぶんが収まりますが、内部にはその前後の日も用意してあり、
  * 横スクロールでシームレスに他の日付を確認できます。
  * 30分刻みのスロットをタップすると、その枠で新規予約フォームが開きます。
+ *
+ * 日をまたぐ予約は、初日は開始時刻から 24:00 まで、中日は上部の「終日」帯に、
+ * 最終日は 0:00 から終了時刻まで、という形で描画されます。
  */
 
-import { DOW_JA, ymd, toMin, toHHMM, hhmm, el, STATUS_LABEL, overlaps, eachDate } from './util.js';
+import {
+  DOW_JA, ymd, toHHMM, el, STATUS_LABEL, overlaps, eachDate, daySpan, formatSpanJa,
+} from './util.js';
 import { SLOT_MINUTES, VISIBLE_DAYS, DEFAULT_SCROLL_HOUR, OPEN_HOUR, CLOSE_HOUR } from './config.js';
 
 const DAY_MIN = 24 * 60;
 const EDGE_PX = 240;
 const MIN_COL_W = 96;
+const AD_BAR_H = 18;
+const AD_MAX_LANES = 3;
 
 function cssPx(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name);
@@ -19,11 +26,8 @@ function cssPx(name, fallback) {
 }
 
 /** 重なり合う予約を横並びのレーンに割り付ける */
-function layout(items) {
-  const sorted = [...items].sort((a, b) => {
-    const d = toMin(a.start_time) - toMin(b.start_time);
-    return d !== 0 ? d : toMin(a.end_time) - toMin(b.end_time);
-  });
+function layout(entries) {
+  const sorted = [...entries].sort((a, b) => (a.start - b.start) || (a.end - b.end));
 
   const placed = [];
   let cluster = [];
@@ -38,19 +42,47 @@ function layout(items) {
     clusterEnd = -1;
   };
 
-  for (const item of sorted) {
-    const s = toMin(item.start_time);
-    const e = Math.max(toMin(item.end_time), s + SLOT_MINUTES / 2);
-    if (s >= clusterEnd) flush();
+  for (const entry of sorted) {
+    if (entry.start >= clusterEnd) flush();
 
     let lane = 0;
-    while (cluster.some((c) => c.lane === lane && overlaps(s, e, c.start, c.end))) lane += 1;
+    while (cluster.some((c) => c.lane === lane && overlaps(entry.start, entry.end, c.start, c.end))) lane += 1;
 
-    cluster.push({ item, start: s, end: e, lane, lanes: 1 });
-    clusterEnd = Math.max(clusterEnd, e);
+    cluster.push({ ...entry, lane, lanes: 1 });
+    clusterEnd = Math.max(clusterEnd, entry.end);
   }
   flush();
   return placed;
+}
+
+/**
+ * 「終日」帯に載せる区間を抽出してレーンを決める。
+ * 中日（0:00〜24:00 を占める日）が連続している範囲を 1 本の帯として扱う。
+ */
+function allDayLayout(dayKeys, byDate) {
+  const segs = new Map();
+
+  for (const key of dayKeys) {
+    for (const item of byDate.get(key) || []) {
+      if (!daySpan(item, key).full) continue;
+      const cur = segs.get(item.id);
+      if (!cur) segs.set(item.id, { item, from: key, to: key });
+      else cur.to = key;
+    }
+  }
+
+  const list = [...segs.values()]
+    .sort((a, b) => a.from.localeCompare(b.from) || b.to.localeCompare(a.to));
+
+  const laneEnds = [];
+  for (const seg of list) {
+    let lane = 0;
+    while (lane < laneEnds.length && laneEnds[lane] >= seg.from) lane += 1;
+    laneEnds[lane] = seg.to;
+    seg.lane = lane;
+  }
+
+  return { list, laneCount: laneEnds.length };
 }
 
 function dayIndexLabel(item, dateStr) {
@@ -78,6 +110,7 @@ export function renderDayStrip(root, ctx) {
   const hourH = cssPx('--hour-h', 52);
   const gutterW = cssPx('--gutter-w', 54);
   const totalH = DAY_MIN / 60 * hourH;
+  const dayKeys = days.map(ymd);
 
   root.replaceChildren();
   const wrap = el('div', { class: 'three' });
@@ -93,9 +126,15 @@ export function renderDayStrip(root, ctx) {
     style: `width:${gutterW + colW * days.length}px`,
   });
 
-  /* ---- 日付ヘッダ（上に固定・横スクロールに追従） ---- */
-  const head = el('div', { class: 'three-head', style: `grid-template-columns:${template}` });
-  head.append(el('div', { class: 'three-tz', text: 'JST' }));
+  const ad = allDayLayout(dayKeys, byDate);
+  const adLanes = Math.min(ad.laneCount, AD_MAX_LANES);
+  const adHeight = adLanes ? adLanes * AD_BAR_H + 6 : 22;
+
+  /* ---- ヘッダ（日付＋終日帯。上に固定・横スクロールに追従） ---- */
+  const head = el('div', { class: 'three-head' });
+
+  const headDays = el('div', { class: 'three-head-days', style: `grid-template-columns:${template}` });
+  headDays.append(el('div', { class: 'three-tz', text: 'JST' }));
 
   for (const d of days) {
     const key = ymd(d);
@@ -104,7 +143,7 @@ export function renderDayStrip(root, ctx) {
     if (d.getDay() === 0) cls.push('is-sun');
     if (d.getDay() === 6) cls.push('is-sat');
 
-    head.append(el('div', {
+    headDays.append(el('div', {
       class: cls.join(' '),
       dataset: { day: key },
       title: 'この日を先頭にする',
@@ -115,6 +154,41 @@ export function renderDayStrip(root, ctx) {
       d.getDate() === 1 ? el('div', { class: 'three-day-mon', text: `${d.getMonth() + 1}月` }) : null,
     ]));
   }
+  head.append(headDays);
+
+  /* 終日帯 */
+  const adRow = el('div', {
+    class: 'three-allday',
+    style: `grid-template-columns:${template};height:${adHeight}px`,
+  });
+  adRow.append(el('div', { class: 'three-ad-tz', text: '終日' }));
+
+  for (const key of dayKeys) {
+    const col = el('div', { class: 'ad-col', dataset: { day: key } });
+    for (const seg of ad.list) {
+      if (key < seg.from || key > seg.to) continue;
+      if (seg.lane >= AD_MAX_LANES) continue;
+      const isHead = key === seg.from || key === dayKeys[0];
+      const cls = ['ad-bar', `is-${seg.item.status}`];
+      if (seg.item.__urgent) cls.push('is-urgent');
+      if (key === seg.from) cls.push('is-start');
+      if (key === seg.to) cls.push('is-end');
+
+      col.append(el('button', {
+        class: cls.join(' '),
+        type: 'button',
+        style: `top:${seg.lane * AD_BAR_H + 2}px`,
+        title: `${formatSpanJa(seg.item)}　${seg.item.title}`,
+        onclick: (e) => { e.stopPropagation(); onEventOpen(seg.item); },
+      }, isHead ? [el('span', { class: 'ad-bar-title', text: seg.item.title || '(無題)' })] : []));
+    }
+    if (ad.laneCount > AD_MAX_LANES) {
+      const hidden = ad.list.filter((s) => s.lane >= AD_MAX_LANES && key >= s.from && key <= s.to).length;
+      if (hidden) col.append(el('span', { class: 'ad-more', text: `+${hidden}` }));
+    }
+    adRow.append(col);
+  }
+  head.append(adRow);
   inner.append(head);
 
   /* ---- タイムグリッド本体 ---- */
@@ -172,7 +246,12 @@ export function renderDayStrip(root, ctx) {
       }));
     }
 
-    for (const p of layout(byDate.get(key) || [])) {
+    /* 終日帯に出したものを除いた予定を、時間帯ブロックとして描く */
+    const entries = (byDate.get(key) || [])
+      .map((item) => ({ item, ...daySpan(item, key) }))
+      .filter((e) => !e.full);
+
+    for (const p of layout(entries)) {
       const top = p.start / 60 * hourH;
       const height = Math.max((p.end - p.start) / 60 * hourH - 2, 15);
       const widthPct = 100 / p.lanes;
@@ -188,10 +267,13 @@ export function renderDayStrip(root, ctx) {
         class: cls.join(' '),
         type: 'button',
         style: `top:${top}px;height:${height}px;left:calc(${leftPct}% + 2px);width:calc(${widthPct}% - 4px)`,
-        title: `${hhmm(p.item.start_time)}–${hhmm(p.item.end_time)} ${p.item.title}（${STATUS_LABEL[p.item.status] || ''}）`,
+        title: `${formatSpanJa(p.item)}　${p.item.title}（${STATUS_LABEL[p.item.status] || ''}）`,
         onclick: (e) => { e.stopPropagation(); onEventOpen(p.item); },
       }, [
-        el('span', { class: 'evt-time', text: `${hhmm(p.item.start_time)}–${hhmm(p.item.end_time)}` }),
+        el('span', {
+          class: 'evt-time',
+          text: `${toHHMM(p.start)}–${p.end === DAY_MIN ? '24:00' : toHHMM(p.end)}`,
+        }),
         el('span', { class: 'evt-title' }, [
           p.item.__urgent ? el('i', { class: 'evt-flag', text: '!' }) : null,
           document.createTextNode(p.item.title || '(無題)'),
@@ -227,10 +309,8 @@ export function renderDayStrip(root, ctx) {
       }
       if (scroller.scrollLeft < EDGE_PX) ctx.onEdge?.('left');
       else if (scroller.scrollLeft + scroller.clientWidth > scroller.scrollWidth - EDGE_PX) ctx.onEdge?.('right');
-    }, 0);
+    });
   }, { passive: true });
-
-  return { colW, gutterW };
 }
 
 /* ------------------------------------------------------- スクロール位置 */

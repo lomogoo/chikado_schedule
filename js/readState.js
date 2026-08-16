@@ -2,10 +2,11 @@
  * 既読 / 未読の管理。
  *
  * サーバー側にユーザーの概念が無いため、既読状態は
- * **この端末の localStorage** に予約 ID をキーとして保存します
+ * **この端末の localStorage** に予約・相談の ID をキーとして保存します
  * （端末ごとに独立して既読が管理されます）。
  *
  *   read[<予約ID>]            = その予約を最後に確認したときの内容シグネチャ
+ *   read['board:<相談ID>']    = その相談を最後に確認したときの内容シグネチャ
  *   read['deadline:<予約ID>'] = 期限接近アラートを確認済み
  */
 
@@ -51,6 +52,15 @@ export function signature(item) {
   ].join('|');
 }
 
+/** 相談（掲示板）の「内容」を表す文字列 */
+export function boardSignature(item) {
+  return [item.updated_at || '', item.status, item.title, item.desired_period || ''].join('|');
+}
+
+export function boardKey(item) {
+  return `board:${item.id}`;
+}
+
 export function isFirstRun() {
   try {
     return localStorage.getItem(KEY_INIT) !== '1';
@@ -63,11 +73,12 @@ function markInitialized() {
   try { localStorage.setItem(KEY_INIT, '1'); } catch { /* 使用不可 */ }
 }
 
-/** 初回起動時に既存の予定をすべて既読にする（過去分の通知でうずまらないように） */
-export function primeOnFirstRun(items) {
+/** 初回起動時に既存の予定・相談をすべて既読にする（過去分の通知でうずまらないように） */
+export function primeOnFirstRun(items, inquiries = []) {
   if (!isFirstRun()) return false;
   const map = load();
   for (const item of items) map[item.id] = signature(item);
+  for (const q of inquiries) map[boardKey(q)] = boardSignature(q);
   save(map);
   markInitialized();
   return true;
@@ -83,9 +94,10 @@ export function markRead(keys) {
  * 未読のお知らせを組み立てる。
  * - new      … この端末でまだ見ていない予定
  * - updated  … 前回確認時から内容が変わった予定
+ * - board    … 掲示板に新しく貼られた / 更新された相談
  * - deadline … 仮予約のまま実施日が URGENT_DAYS 以内に迫った予定
  */
-export function buildNotifications(items, todayStr) {
+export function buildNotifications(items, inquiries, todayStr) {
   const map = load();
   const out = [];
 
@@ -96,6 +108,12 @@ export function buildNotifications(items, todayStr) {
     else if (prev !== sig) out.push({ kind: 'updated', key: item.id, sig, item });
   }
 
+  for (const q of inquiries) {
+    const key = boardKey(q);
+    const sig = boardSignature(q);
+    if (map[key] !== sig) out.push({ kind: 'board', key, sig, item: q, isBoard: true });
+  }
+
   for (const item of items) {
     const days = urgencyDays(item, todayStr, URGENT_DAYS);
     if (days === null) continue;
@@ -104,8 +122,8 @@ export function buildNotifications(items, todayStr) {
     out.push({ kind: 'deadline', key, sig: 'done', item, days });
   }
 
-  const order = { deadline: 0, new: 1, updated: 2 };
+  const order = { deadline: 0, new: 1, board: 2, updated: 3 };
   out.sort((a, b) => (order[a.kind] - order[b.kind])
-    || a.item.start_date.localeCompare(b.item.start_date));
+    || String(a.item.start_date || '').localeCompare(String(b.item.start_date || '')));
   return out;
 }

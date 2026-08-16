@@ -1,18 +1,31 @@
 /**
  * 月別ビュー
  *
- * 月ブロックを縦に連ねて描画し、下端までスクロールすると翌月、
- * 上端までスクロールすると前月が継ぎ足されます。
+ * 1 画面に 1 か月がぴったり収まり、縦スクロールで月がスナップして切り替わります
+ * （YouTube Shorts のような送り心地）。月の途中で止まることはありません。
  */
 
-import { DOW_JA, ymd, monthCells, monthKey, monthLabel, hhmm, el, STATUS_LABEL, eachDate } from './util.js';
+import {
+  DOW_JA, ymd, monthCells, monthKey, monthLabel, dayTimeLabel,
+  el, STATUS_LABEL, eachDate, formatSpanJa,
+} from './util.js';
 
-const MAX_CHIPS_DESKTOP = 3;
-const MAX_CHIPS_MOBILE = 2;
-const EDGE_PX = 320;
+/* レイアウト実測に使う概算値（CSS と合わせている） */
+const M = {
+  desktop: { dow: 34, head: 30, cellHead: 22, cellPad: 14, chip: 19 },
+  mobile: { dow: 30, head: 26, cellHead: 18, cellPad: 10, chip: 15 },
+};
 
-function maxChips() {
-  return window.matchMedia('(max-width: 720px)').matches ? MAX_CHIPS_MOBILE : MAX_CHIPS_DESKTOP;
+function metrics() {
+  return window.matchMedia('(max-width: 720px)').matches ? M.mobile : M.desktop;
+}
+
+/** 1 セルに収まるチップ数を、実際の高さから割り出す */
+function chipCapacity(rootHeight, weeks) {
+  const m = metrics();
+  const cellH = (rootHeight - m.dow - m.head) / weeks;
+  const usable = cellH - m.cellHead - m.cellPad;
+  return Math.max(1, Math.min(6, Math.floor(usable / m.chip)));
 }
 
 /** 複数日予約のとき「2/4」のような通し番号を返す */
@@ -31,20 +44,22 @@ function buildChip(item, dateStr, onEventOpen) {
   return el('button', {
     class: cls.join(' '),
     type: 'button',
-    title: `${hhmm(item.start_time)}–${hhmm(item.end_time)} ${item.title}（${STATUS_LABEL[item.status] || ''}）`,
+    title: `${formatSpanJa(item)}　${item.title}（${STATUS_LABEL[item.status] || ''}）`,
     onclick: (e) => { e.stopPropagation(); onEventOpen(item); },
   }, [
     item.__urgent ? el('i', { class: 'mchip-flag', text: '!' }) : null,
-    el('span', { class: 'mchip-time', text: hhmm(item.start_time) }),
+    el('span', { class: 'mchip-time', text: dayTimeLabel(item, dateStr) }),
     el('span', { class: 'mchip-title', text: item.title || '(無題)' }),
     idx ? el('span', { class: 'mchip-idx', text: idx }) : null,
   ]);
 }
 
-function buildMonthBlock(monthDate, ctx) {
+function buildMonthBlock(monthDate, ctx, rootHeight) {
   const { byDate, todayStr, onEventOpen, onDayOpen, onDayCreate } = ctx;
   const month = monthDate.getMonth();
-  const limit = maxChips();
+  const cells = monthCells(monthDate);
+  const weeks = cells.length / 7;
+  const limit = chipCapacity(rootHeight, weeks);
 
   const block = el('section', {
     class: 'month-block',
@@ -55,9 +70,12 @@ function buildMonthBlock(monthDate, ctx) {
     el('span', { class: 'month-block-title', text: monthLabel(monthDate) }),
   ]));
 
-  const grid = el('div', { class: 'month-grid' });
+  const grid = el('div', {
+    class: 'month-grid',
+    style: `grid-template-rows:repeat(${weeks},minmax(0,1fr))`,
+  });
 
-  for (const date of monthCells(monthDate)) {
+  for (const date of cells) {
     // 月をまたいだセルは空欄にする。
     // （縦に月を連ねるレイアウトでは、隣の月のブロックと日付が重複してしまうため）
     if (date.getMonth() !== month) {
@@ -101,13 +119,15 @@ function buildMonthBlock(monthDate, ctx) {
     ]));
 
     const body = el('div', { class: 'mcell-body' });
-    items.slice(0, limit).forEach((item) => body.append(buildChip(item, key, onEventOpen)));
+    // 収まらないときは最後の 1 行を「他 N 件」に使う
+    const showCount = items.length > limit ? Math.max(limit - 1, 1) : items.length;
+    items.slice(0, showCount).forEach((item) => body.append(buildChip(item, key, onEventOpen)));
 
-    if (items.length > limit) {
+    if (items.length > showCount) {
       body.append(el('button', {
         class: 'mchip-more',
         type: 'button',
-        text: `他 ${items.length - limit} 件`,
+        text: `他 ${items.length - showCount} 件`,
         onclick: (e) => { e.stopPropagation(); onDayOpen(key); },
       }));
     }
@@ -129,10 +149,10 @@ function buildMonthBlock(monthDate, ctx) {
  * @param {(item: object) => void} ctx.onEventOpen
  * @param {(dateStr: string) => void} ctx.onDayOpen
  * @param {(dateStr: string) => void} ctx.onDayCreate
- * @param {(edge: 'top'|'bottom') => void} ctx.onEdge
  * @param {(key: string) => void} ctx.onVisibleMonth
  */
 export function renderMonths(root, ctx) {
+  const rootHeight = root.clientHeight || window.innerHeight - 120;
   root.replaceChildren();
 
   const wrap = el('div', { class: 'month' });
@@ -144,7 +164,7 @@ export function renderMonths(root, ctx) {
   wrap.append(dow);
 
   const scroller = el('div', { class: 'month-scroll' });
-  for (const m of ctx.months) scroller.append(buildMonthBlock(m, ctx));
+  for (const m of ctx.months) scroller.append(buildMonthBlock(m, ctx, rootHeight));
   wrap.append(scroller);
   root.append(wrap);
 
@@ -160,17 +180,16 @@ export function renderMonths(root, ctx) {
         lastMonth = key;
         ctx.onVisibleMonth?.(key);
       }
-      if (scroller.scrollTop < EDGE_PX) ctx.onEdge?.('top');
-      else if (scroller.scrollTop + scroller.clientHeight > scroller.scrollHeight - EDGE_PX) ctx.onEdge?.('bottom');
     });
   }, { passive: true });
 }
 
+/** スクロール位置から「いま見えている月」を決める（1画面1か月なので中央で判定） */
 function visibleMonthKey(scroller) {
-  const top = scroller.scrollTop + 40;
+  const center = scroller.scrollTop + scroller.clientHeight / 2;
   let key = null;
   for (const b of scroller.querySelectorAll('.month-block')) {
-    if (b.offsetTop <= top) key = b.dataset.month;
+    if (b.offsetTop <= center) key = b.dataset.month;
     else break;
   }
   return key || scroller.querySelector('.month-block')?.dataset.month || null;
@@ -181,21 +200,13 @@ function visibleMonthKey(scroller) {
 export function captureMonthScroll(root) {
   const scroller = root.querySelector('.month-scroll');
   if (!scroller) return null;
-  const top = scroller.scrollTop;
-  let block = null;
-  for (const b of scroller.querySelectorAll('.month-block')) {
-    if (b.offsetTop <= top + 4) block = b;
-    else break;
-  }
-  block = block || scroller.querySelector('.month-block');
-  return block ? { key: block.dataset.month, offset: top - block.offsetTop } : null;
+  const key = visibleMonthKey(scroller);
+  return key ? { key } : null;
 }
 
 export function restoreMonthScroll(root, saved) {
   if (!saved) return;
-  const scroller = root.querySelector('.month-scroll');
-  const block = scroller?.querySelector(`.month-block[data-month="${saved.key}"]`);
-  if (scroller && block) scroller.scrollTop = block.offsetTop + saved.offset;
+  scrollToMonth(root, saved.key);
 }
 
 export function scrollToMonth(root, key, { smooth = false } = {}) {
