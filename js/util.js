@@ -4,11 +4,16 @@
  * このアプリは日付を `YYYY-MM-DD`、時刻を `HH:MM` の「ローカル値」として扱います。
  * DB 側も date / time 型で持つため、タイムゾーン変換は一切発生しません
  * （施設予約は常に現地時間で運用されるため、この方が事故が起きません）。
+ *
+ * 予約は `start_date` 〜 `end_date` の各日を `start_time` 〜 `end_time` で使う、
+ * という「期間 × 毎日の時間帯」モデルです。
  */
 
 import { SLOT_MINUTES } from './config.js';
 
 export const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
+
+const MS_PER_DAY = 86_400_000;
 
 /* ------------------------------------------------------------------ 日付 */
 
@@ -46,21 +51,46 @@ export function endOfMonth(d) {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
 
-/** 月別ビューのマス目（日曜始まりで 6 週ぶん = 42 日）を返す */
-export function monthMatrix(d) {
+/** その月を表示するのに必要な週（日曜始まり）の日付をすべて返す */
+export function monthCells(d) {
   const first = startOfMonth(d);
+  const last = endOfMonth(d);
   const start = addDays(first, -first.getDay());
-  return Array.from({ length: 42 }, (_, i) => addDays(start, i));
-}
-
-export function isSameDay(a, b) {
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
+  const end = addDays(last, 6 - last.getDay());
+  const out = [];
+  for (let cur = start; cur <= end; cur = addDays(cur, 1)) out.push(cur);
+  return out;
 }
 
 export function todayYmd() {
   return ymd(new Date());
+}
+
+/** b - a を日数で返す（どちらも 'YYYY-MM-DD'） */
+export function daysDiff(aStr, bStr) {
+  return Math.round((parseYmd(bStr) - parseYmd(aStr)) / MS_PER_DAY);
+}
+
+/** start 〜 end（両端含む）の日付文字列を返す */
+export function eachDate(startStr, endStr, cap = 400) {
+  const out = [];
+  if (!startStr) return out;
+  const end = endStr && endStr >= startStr ? endStr : startStr;
+  let cur = parseYmd(startStr);
+  const last = parseYmd(end);
+  while (cur <= last && out.length < cap) {
+    out.push(ymd(cur));
+    cur = addDays(cur, 1);
+  }
+  return out;
+}
+
+export function monthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function monthLabel(d) {
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
 }
 
 /* ------------------------------------------------------------------ 時刻 */
@@ -110,6 +140,21 @@ export function formatDateJa(dateStr, { withDow = true } = {}) {
   return withDow ? `${base}（${DOW_JA[d.getDay()]}）` : base;
 }
 
+/** 期間の見出し。同日なら 1 つだけ、同月内なら「日」だけを省略表記にする */
+export function formatDateRangeJa(startStr, endStr) {
+  if (!endStr || endStr === startStr) return formatDateJa(startStr);
+  const a = parseYmd(startStr);
+  const b = parseYmd(endStr);
+  const head = formatDateJa(startStr);
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+    return `${head} – ${b.getDate()}日（${DOW_JA[b.getDay()]}）`;
+  }
+  if (a.getFullYear() === b.getFullYear()) {
+    return `${head} – ${b.getMonth() + 1}月${b.getDate()}日（${DOW_JA[b.getDay()]}）`;
+  }
+  return `${head} – ${formatDateJa(endStr)}`;
+}
+
 export const STATUS_LABEL = {
   confirmed: '本予約',
   tentative: '仮予約',
@@ -139,4 +184,23 @@ export function el(tag, props = {}, children = []) {
 /** 2 つの区間（分）が重なっているか */
 export function overlaps(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
+}
+
+/** 予約が指定日にかかっているか */
+export function coversDate(item, dateStr) {
+  const end = item.end_date && item.end_date >= item.start_date ? item.end_date : item.start_date;
+  return item.start_date <= dateStr && dateStr <= end;
+}
+
+/**
+ * 仮予約のまま実施が迫っているか。
+ * @returns {number|null} 実施開始日までの残り日数（対象外なら null）
+ */
+export function urgencyDays(item, todayStr, threshold) {
+  if (item.status !== 'tentative') return null;
+  const endStr = item.end_date && item.end_date >= item.start_date ? item.end_date : item.start_date;
+  if (endStr < todayStr) return null;                 // 終了済みは対象外
+  const d = daysDiff(todayStr, item.start_date);
+  if (d > threshold) return null;
+  return Math.max(d, 0);
 }

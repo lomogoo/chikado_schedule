@@ -9,9 +9,9 @@ const REST = `${SUPABASE_URL}/rest/v1`;
 
 /** 予約フォームで扱う列。DB に無い列を送らないようここで固定する。 */
 export const FIELDS = [
-  'date', 'start_time', 'end_time',
+  'start_date', 'end_date', 'start_time', 'end_time',
   'title', 'purpose', 'status',
-  'organizer', 'contact', 'headcount', 'notes',
+  'organizer', 'contact', 'staff', 'headcount', 'notes',
 ];
 
 const SELECT = ['id', ...FIELDS, 'created_at', 'updated_at'].join(',');
@@ -68,21 +68,24 @@ function normalize(input) {
 
     out[key] = v;
   }
+  // 終了日の未指定は開始日と同じ（単日利用）とみなす
+  if (out.start_date && !out.end_date) out.end_date = out.start_date;
   return out;
 }
 
 export const Reservations = {
   /**
-   * 期間内（両端含む）の予約を取得。
+   * 期間に「かかっている」予約をすべて取得する。
+   * 複数日にまたがる予約も拾えるよう、期間の重なりで判定している。
    * @param {string} fromDate 'YYYY-MM-DD'
    * @param {string} toDate   'YYYY-MM-DD'
    */
   async listRange(fromDate, toDate) {
     const q = new URLSearchParams();
     q.append('select', SELECT);
-    q.append('date', `gte.${fromDate}`);
-    q.append('date', `lte.${toDate}`);
-    q.append('order', 'date.asc,start_time.asc');
+    q.append('start_date', `lte.${toDate}`);
+    q.append('end_date', `gte.${fromDate}`);
+    q.append('order', 'start_date.asc,start_time.asc');
     return (await request(`/${TABLE}?${q}`)) || [];
   },
 

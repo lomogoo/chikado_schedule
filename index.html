@@ -31,6 +31,15 @@
         <button class="seg-btn is-active" role="tab" data-view="month" aria-selected="true">月</button>
         <button class="seg-btn" role="tab" data-view="three" aria-selected="false">3日間</button>
       </div>
+
+      <button class="icon-btn notif-btn" id="btn-notif" type="button" aria-label="お知らせ">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path d="M8 1.6a3.6 3.6 0 0 0-3.6 3.6v2.3L3.2 10.2h9.6L11.6 7.5V5.2A3.6 3.6 0 0 0 8 1.6Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M6.5 12.1a1.6 1.6 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span class="notif-badge" id="notif-badge" hidden>0</span>
+      </button>
+
       <button class="btn btn-primary" id="btn-new" type="button">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg>
         <span>新規予約</span>
@@ -54,6 +63,7 @@
       <button class="chip-filter is-active" data-filter="all" type="button">すべて</button>
       <button class="chip-filter" data-filter="confirmed" type="button"><i class="dot dot-confirmed"></i>本予約</button>
       <button class="chip-filter" data-filter="tentative" type="button"><i class="dot dot-tentative"></i>仮予約</button>
+      <button class="chip-filter" data-filter="urgent" type="button"><i class="dot dot-urgent"></i>要確認</button>
     </div>
   </div>
 </header>
@@ -65,6 +75,20 @@
 
   <div class="loading-bar" id="loading-bar" hidden></div>
 </main>
+
+<!-- ============ お知らせポップアップ ============ -->
+<div class="notif-pop" id="notif-pop" hidden role="dialog" aria-label="お知らせ">
+  <div class="notif-head">
+    <span class="notif-title">お知らせ<span class="notif-count" id="notif-count"></span></span>
+    <div class="notif-head-actions">
+      <button class="notif-linkbtn" id="notif-readall" type="button">すべて既読</button>
+      <button class="icon-btn icon-btn-plain" id="notif-close" type="button" aria-label="閉じる">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="notif-list" id="notif-list"></div>
+</div>
 
 <!-- ============ 予約フォーム ============ -->
 <div class="overlay" id="overlay-form" hidden>
@@ -104,15 +128,14 @@
         <input class="input" type="text" name="title" maxlength="80" placeholder="例）m chika. 試験営業" required />
       </label>
 
-      <div class="field-row">
-        <label class="field">
-          <span class="label">利用日 <i class="req">必須</i></span>
-          <input class="input" type="date" name="date" required />
-        </label>
-        <label class="field field-narrow">
-          <span class="label">人数</span>
-          <input class="input" type="number" name="headcount" min="0" max="9999" placeholder="—" />
-        </label>
+      <div class="field">
+        <span class="label">利用日 <i class="req">必須</i><small class="hint">複数日にまたがる場合は終了日を変更</small></span>
+        <div class="time-row">
+          <input class="input" type="date" name="start_date" required />
+          <span class="time-sep">→</span>
+          <input class="input" type="date" name="end_date" required />
+        </div>
+        <div class="duration" id="span-label"></div>
       </div>
 
       <div class="field">
@@ -138,6 +161,17 @@
         <label class="field">
           <span class="label">連絡先</span>
           <input class="input" type="text" name="contact" maxlength="120" placeholder="電話 / メール" />
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="label">チカ堂担当者 <i class="opt">任意</i></span>
+          <input class="input" type="text" name="staff" maxlength="80" placeholder="例）吉田" />
+        </label>
+        <label class="field field-narrow">
+          <span class="label">人数</span>
+          <input class="input" type="number" name="headcount" min="0" max="9999" placeholder="—" />
         </label>
       </div>
 
