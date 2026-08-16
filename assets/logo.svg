@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 328" role="img" aria-label="チカ堂">
+  <title>チカ堂</title>
+  <!--
+    チカ堂 ロゴ（縦組み）
+    公式のロゴデータ（AI/EPS/SVG/PNG）が手元にある場合は、
+    このファイルを同名で差し替えるだけでアプリ全体のロゴが入れ替わります。
+  -->
+  <g fill="#141414"
+     font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','YuGothic',Meiryo,sans-serif"
+     font-weight="900"
+     font-size="98"
+     text-anchor="middle">
+    <text x="52" y="54" dominant-baseline="central">チ</text>
+    <text x="52" y="164" dominant-baseline="central">カ</text>
+    <text x="52" y="274" dominant-baseline="central">堂</text>
+  </g>
+</svg>

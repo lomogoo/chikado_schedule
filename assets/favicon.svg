@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="チカ堂">
+  <title>チカ堂</title>
+  <rect width="64" height="64" rx="8" fill="#141414"/>
+  <g fill="#ffffff"
+     font-family="'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','Yu Gothic','YuGothic',Meiryo,sans-serif"
+     font-weight="900"
+     font-size="19"
+     text-anchor="middle">
+    <text x="32" y="15" dominant-baseline="central">チ</text>
+    <text x="32" y="33" dominant-baseline="central">カ</text>
+    <text x="32" y="51" dominant-baseline="central">堂</text>
+  </g>
+</svg>
