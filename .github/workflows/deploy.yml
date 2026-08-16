@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/facility-booking-app-p46mw5
   workflow_dispatch:
 
 permissions:

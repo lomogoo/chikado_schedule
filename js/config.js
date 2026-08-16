@@ -8,8 +8,11 @@
 export const SUPABASE_URL = 'https://tfkzsbwhvhgxbnnfwtou.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_Ro1VwRK4o96IkyV6JC0q6w_vCjfFWYm';
 
-/** 予約を格納するテーブル名 */
-export const TABLE = 'reservations';
+/**
+ * 予約を格納するテーブル名。
+ * 既存の `reservations` とは分離するため、このアプリ専用のテーブルを使います。
+ */
+export const TABLE = 'chikado_reservations';
 
 /** 3日間ビューで一度に表示する日数 */
 export const THREE_DAY_SPAN = 3;

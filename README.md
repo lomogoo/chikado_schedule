@@ -38,7 +38,8 @@
 
 セットアップ用の SQL は**リポジトリには含めず、別途共有**しています。
 Supabase の **SQL Editor** に貼り付けて実行してください。
-既存の `public.reservations` テーブルに、アプリが使う列を追加（既にあれば何もしない）します。
+このアプリ専用の `public.chikado_reservations` テーブルを新規作成します
+（既存の `reservations` テーブルには一切触れません）。
 
 ### 2. 接続設定
 
@@ -65,8 +66,8 @@ python3 -m http.server 8000
 
 ## デプロイ
 
-`main` または `claude/facility-booking-app-p46mw5` への push で GitHub Actions が走り、
-GitHub Pages へ自動デプロイされます（`.github/workflows/deploy.yml`）。
+`main` への push で GitHub Actions が走り、GitHub Pages へ自動デプロイされます
+（`.github/workflows/deploy.yml`）。
 
 公開 URL: <https://lomogoo.github.io/chikado_schedule/>
 
@@ -74,7 +75,7 @@ GitHub Pages へ自動デプロイされます（`.github/workflows/deploy.yml`�
 
 ## データ構造
 
-`public.reservations`
+`public.chikado_reservations`（このアプリ専用。既存の `reservations` とは分離）
 
 | 列 | 型 | 説明 |
 | --- | --- | --- |
