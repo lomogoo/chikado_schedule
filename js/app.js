@@ -1039,8 +1039,8 @@ function openInquiryDetail(item) {
   ];
 
   dom.idetailBody.replaceChildren(...nodes.filter(Boolean));
-  dom.idetailSchedule.textContent = item.status === 'scheduled'
-    ? 'もう一度カレンダーへ' : '日程を決めてカレンダーへ';
+  $('#idetail-schedule-label').textContent = item.status === 'scheduled'
+    ? 'もう一度登録' : 'カレンダーへ';
   dom.idetailShelve.hidden = item.status === 'closed';
   dom.overlayIDetail.hidden = false;
   markItemRead(item, true);

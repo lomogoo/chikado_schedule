@@ -290,17 +290,24 @@
   <div class="sheet sheet-narrow" role="dialog" aria-modal="true" aria-labelledby="idetail-title">
     <div class="sheet-head">
       <h2 class="sheet-title" id="idetail-title">相談の内容</h2>
-      <button class="icon-btn icon-btn-plain" id="idetail-close" type="button" aria-label="閉じる">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6"/></svg>
-      </button>
+      <div class="sheet-head-tools">
+        <button class="icon-btn icon-btn-plain icon-btn-danger" id="idetail-delete" type="button" aria-label="削除">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 4.5h9M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.4a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="icon-btn icon-btn-plain" id="idetail-close" type="button" aria-label="閉じる">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
+      </div>
     </div>
     <div class="sheet-body" id="idetail-body"></div>
     <div class="sheet-foot">
-      <button class="btn btn-danger-ghost" id="idetail-delete" type="button">削除</button>
-      <div class="spacer"></div>
-      <button class="btn btn-ghost" id="idetail-shelve" type="button">見送りにする</button>
+      <button class="btn btn-ghost" id="idetail-shelve" type="button">見送り</button>
       <button class="btn btn-ghost" id="idetail-edit" type="button">編集</button>
-      <button class="btn btn-primary" id="idetail-schedule" type="button">日程を決めてカレンダーへ</button>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" id="idetail-schedule" type="button">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.5h12M5 2v2.4M11 2v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span id="idetail-schedule-label">カレンダーへ</span>
+      </button>
     </div>
   </div>
 </div>
