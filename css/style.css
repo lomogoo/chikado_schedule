@@ -819,9 +819,9 @@ button { cursor: pointer; }
   animation-delay: var(--delay, 0ms);
 }
 
-.note.is-paper { background: #fff; }
-.note.is-pink { background: var(--pink-soft); }
-.note.is-stone { background: #f7f5f2; }
+.note.is-open { background: #fff; }
+.note.is-scheduled { background: var(--pink-soft); }
+.note.is-closed { background: #f2f0ec; }
 
 .note:hover {
   transform: rotate(0deg) translateY(-5px);

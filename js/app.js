@@ -100,6 +100,7 @@ const dom = {
   overlayIDetail: $('#overlay-inquiry-detail'),
   idetailBody: $('#idetail-body'),
   idetailSchedule: $('#idetail-schedule'),
+  idetailShelve: $('#idetail-shelve'),
 
   toastWrap: $('#toast-wrap'),
 };
@@ -998,6 +999,20 @@ async function deleteInquiry(id) {
   }
 }
 
+async function shelveInquiry() {
+  const q = state.inquiryDetail;
+  if (!q || !window.confirm('この相談を「見送り」にします。よろしいですか？')) return;
+  try {
+    await Inquiries.update(q.id, { status: 'closed' });
+    toast('見送りにしました');
+    closeInquiryDetail();
+    await loadBoard();
+    loadNotifications();
+  } catch (err) {
+    reportError(err);
+  }
+}
+
 function openInquiryDetail(item) {
   state.inquiryDetail = item;
 
@@ -1026,6 +1041,7 @@ function openInquiryDetail(item) {
   dom.idetailBody.replaceChildren(...nodes.filter(Boolean));
   dom.idetailSchedule.textContent = item.status === 'scheduled'
     ? 'もう一度カレンダーへ' : '日程を決めてカレンダーへ';
+  dom.idetailShelve.hidden = item.status === 'closed';
   dom.overlayIDetail.hidden = false;
   markItemRead(item, true);
 }
@@ -1144,6 +1160,7 @@ function bind() {
   });
 
   $('#idetail-close').addEventListener('click', closeInquiryDetail);
+  dom.idetailShelve.addEventListener('click', shelveInquiry);
   $('#idetail-edit').addEventListener('click', () => {
     const item = state.inquiryDetail;
     closeInquiryDetail();

@@ -8,19 +8,14 @@
 
 import { el, hashCode } from './util.js';
 
-const TINTS = ['is-paper', 'is-pink', 'is-stone', 'is-paper', 'is-pink'];
-
 function tiltOf(id) {
   // -2.4deg 〜 2.4deg を ID から決める（再描画しても傾きが変わらないように）
   return ((hashCode(id) % 49) - 24) / 10;
 }
 
-function tintOf(id) {
-  return TINTS[hashCode(`${id}t`) % TINTS.length];
-}
-
 function buildNote(item, ctx) {
-  const cls = ['note', `is-${item.status}`, tintOf(item.id)];
+  // 色は状態で決まる：相談中＝白／日程確定＝ピンク／見送り＝グレー
+  const cls = ['note', `is-${item.status}`];
   if (ctx.freshIds?.has(item.id)) cls.push('is-fresh');
 
   return el('article', {
