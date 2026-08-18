@@ -1000,32 +1000,42 @@ button { cursor: pointer; }
   padding: 2px 6px;
 }
 
-/* --- 外部向けフォームの共有 --- */
+/* --- 外部向けフォームの共有（場所を取らない小さなボタンだけ） --- */
 .board-share {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  max-width: 620px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--stone-light);
-  padding: 12px 14px;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  margin-left: 2px;
+  border-left: 1px solid var(--line);
 }
 
-.board-share-lead { display: flex; flex-direction: column; gap: 3px; }
-.board-share-lead b { font-size: 11.5px; font-weight: 900; letter-spacing: .08em; }
-.board-share-lead span { font-size: 10.5px; line-height: 1.6; color: var(--ink-55); }
+.board-share-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--ink-35);
+}
 
-.board-share-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.board-share-url {
-  flex: 1 1 240px;
-  min-width: 0;
-  font-size: 11px;
+.btn-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
   background: var(--paper);
-  color: var(--ink-80);
+  color: var(--ink-55);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1;
+  padding: 5px 7px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all .14s ease;
 }
+
+.btn-mini:hover { border-color: var(--ink-35); color: var(--ink); background: var(--stone-light); }
 
 /* その他フィルターはアンバーで色分け */
 .chip-filter.chip-other.is-active {
