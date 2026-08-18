@@ -11,13 +11,15 @@ const REST = `${SUPABASE_URL}/rest/v1`;
 export const FIELDS = [
   'start_date', 'end_date', 'start_time', 'end_time',
   'title', 'purpose', 'status',
-  'organizer', 'contact', 'staff', 'headcount', 'notes',
+  'organizer', 'contact', 'contact_email', 'contact_phone',
+  'staff', 'headcount', 'notes',
 ];
 
 /** 相談（掲示板）で扱う列 */
 export const BOARD_FIELDS = [
-  'title', 'desired_period', 'purpose', 'status',
-  'organizer', 'contact', 'staff', 'headcount', 'notes', 'reservation_id',
+  'title', 'desired_period', 'purpose', 'status', 'category', 'source',
+  'organizer', 'contact', 'contact_email', 'contact_phone',
+  'staff', 'headcount', 'notes', 'reservation_id',
 ];
 
 const SELECT = ['id', ...FIELDS, 'created_at', 'updated_at'].join(',');

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>チカ堂 利用のご相談・お問い合わせ</title>
+<meta name="description" content="チカ堂（サンモール一番町・地下空間）の施設利用のご相談・お問い合わせフォームです。" />
+<meta name="theme-color" content="#ffffff" />
+<meta name="robots" content="noindex" />
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="./assets/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body class="public-body">
+
+<div class="public-page">
+  <header class="public-header">
+    <img class="public-logo" src="./assets/logo.svg" alt="チカ堂" />
+    <div class="public-headline">
+      <h1 class="public-h">利用のご相談・お問い合わせ</h1>
+      <p class="public-sub">サンモール一番町・旧金港堂跡地の地下空間「チカ堂」へのお問い合わせフォームです。<br>いただいた内容はチカ堂の担当者が確認し、折り返しご連絡します。</p>
+    </div>
+  </header>
+
+  <!-- ============ 入力 ============ -->
+  <main class="public-card" id="public-card">
+    <form id="public-form" novalidate>
+
+      <div class="field">
+        <span class="label">ご相談の内容 <i class="req">必須</i></span>
+        <div class="status-pick">
+          <label class="status-opt status-opt-facility">
+            <input type="radio" name="category" value="facility" checked />
+            <span class="status-box">
+              <b>施設予約</b>
+              <small>チカ堂を使いたい</small>
+            </span>
+          </label>
+          <label class="status-opt status-opt-other">
+            <input type="radio" name="category" value="other" />
+            <span class="status-box">
+              <b>その他</b>
+              <small>それ以外の問い合わせ</small>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="label"><span data-cat-text="件名（催し・利用の名称）|件名（ご用件）">件名（催し・利用の名称）</span> <i class="req">必須</i></span>
+        <input class="input" type="text" name="title" maxlength="80" placeholder="例）冬のクラフト市（仮）" required />
+      </label>
+
+      <label class="field" data-cat="facility">
+        <span class="label">ご希望の時期 <i class="opt">任意</i><small class="hint">ざっくりでOK</small></span>
+        <input class="input" type="text" name="desired_period" maxlength="120" placeholder="例）12月の週末、平日夜、いつでも" />
+      </label>
+
+      <label class="field">
+        <span class="label"><span data-cat-text="利用内容|お問い合わせ内容">利用内容</span> <i class="req">必須</i></span>
+        <textarea class="input textarea" name="purpose" rows="5" maxlength="2000" placeholder="例）作家12組による展示販売。搬入は前日から。" required></textarea>
+      </label>
+
+      <div class="public-sec">
+        <span class="public-sec-h">お客さまの情報</span>
+      </div>
+
+      <label class="field">
+        <span class="label">お名前・団体名 <i class="req">必須</i></span>
+        <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂 太郎 / ◯◯実行委員会" required />
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="label">メールアドレス</span>
+          <input class="input" type="email" name="contact_email" maxlength="120" placeholder="例）info@example.jp" autocomplete="email" />
+        </label>
+        <label class="field">
+          <span class="label">電話番号</span>
+          <input class="input" type="tel" name="contact_phone" maxlength="40" placeholder="例）022-000-0000" autocomplete="tel" />
+        </label>
+      </div>
+      <p class="public-note">メールアドレス・電話番号は、どちらか一方だけでもかまいません（ご連絡のためにいずれか必須です）。</p>
+
+      <div class="field-row" data-cat="facility">
+        <label class="field field-narrow">
+          <span class="label">想定人数 <i class="opt">任意</i></span>
+          <input class="input" type="number" name="headcount" min="0" max="9999" placeholder="—" />
+        </label>
+      </div>
+
+      <label class="field" data-cat="facility">
+        <span class="label">備考 <i class="opt">任意</i></span>
+        <textarea class="input textarea" name="notes" rows="2" maxlength="1000" placeholder="設営や備品など、気になっていること"></textarea>
+      </label>
+
+      <!-- 自動投稿よけ。人には見えません -->
+      <div class="public-trap" aria-hidden="true">
+        <label>この欄は入力しないでください
+          <input type="text" name="website" tabindex="-1" autocomplete="off" />
+        </label>
+      </div>
+
+      <div class="form-alert" id="public-alert" hidden></div>
+
+      <div class="public-foot">
+        <button class="btn btn-primary btn-wide" id="public-submit" type="submit">この内容で送信する</button>
+        <p class="public-note">送信内容はチカ堂の運営スタッフのみが確認します。日程の確約ではありませんので、あらかじめご了承ください。</p>
+      </div>
+    </form>
+  </main>
+
+  <!-- ============ 送信完了 ============ -->
+  <section class="public-card public-done" id="public-done" hidden>
+    <span class="public-done-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="30" height="30"><path d="M7 16.5 13.5 23 25 10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <h2 class="public-done-h">送信しました</h2>
+    <p class="public-done-text" id="public-done-text"></p>
+    <button class="btn btn-ghost" id="public-again" type="button">続けてもう1件送る</button>
+  </section>
+
+  <footer class="public-footer">チカ堂（サンモール一番町・旧金港堂跡地 地下空間）</footer>
+</div>
+
+<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+<script type="module" src="./js/publicInquiry.js"></script>
+</body>
+</html>

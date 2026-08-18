@@ -15,6 +15,10 @@
   --pink-deep:    #d97f9e;
   --pink-dark:    #b8577a;
   --pink-soft:    #fdeef3;
+  --amber:        #e2a233; /* その他の問い合わせ（掲示板の黄色い付箋） */
+  --amber-deep:   #b87914;
+  --amber-dark:   #8a5a06;
+  --amber-soft:   #fff6e2;
   --stone:        #c9c6c0; /* ポスターの地色グレー */
   --stone-mid:    #e2dfd9;
   --stone-light:  #f4f2ef;
@@ -952,6 +956,85 @@ button { cursor: pointer; }
 .note.is-scheduled, .note.is-closed { opacity: .88; }
 .note.is-scheduled .note-title, .note.is-closed .note-title { color: var(--ink-80); }
 
+/* --- その他の問い合わせ：黄色い付箋で一目で分ける --- */
+.note.is-cat-other.is-open { background: var(--amber-soft); }
+.note.is-cat-other.is-scheduled { background: #fdf0dd; }
+.note.is-cat-other .note-pin {
+  background: radial-gradient(circle at 34% 30%, #ffffff 0 14%, var(--amber) 15% 68%, var(--amber-deep) 69%);
+}
+
+.note-cat {
+  align-self: flex-start;
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  color: var(--amber-dark);
+  background: #fbe6bd;
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+/* --- 担当者が決まっていない付箋を目立たせる --- */
+.note.is-nostaff {
+  border-color: var(--pink-deep);
+  box-shadow:
+    inset 4px 0 0 var(--pink-deep),
+    0 1px 2px rgba(20, 20, 20, .10),
+    0 10px 20px -14px rgba(20, 20, 20, .45);
+}
+
+.note.is-nostaff:hover {
+  box-shadow:
+    inset 4px 0 0 var(--pink-deep),
+    0 3px 6px rgba(20, 20, 20, .10),
+    0 20px 34px -18px rgba(20, 20, 20, .55);
+}
+
+.note-nostaff {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  color: #fff;
+  background: var(--pink-dark);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+/* --- 外部向けフォームの共有 --- */
+.board-share {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 620px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--stone-light);
+  padding: 12px 14px;
+}
+
+.board-share-lead { display: flex; flex-direction: column; gap: 3px; }
+.board-share-lead b { font-size: 11.5px; font-weight: 900; letter-spacing: .08em; }
+.board-share-lead span { font-size: 10.5px; line-height: 1.6; color: var(--ink-55); }
+
+.board-share-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.board-share-url {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 11px;
+  background: var(--paper);
+  color: var(--ink-80);
+}
+
+/* その他フィルターはアンバーで色分け */
+.chip-filter.chip-other.is-active {
+  border-color: var(--amber-deep);
+  color: var(--amber-dark);
+  background: var(--amber-soft);
+}
+.chip-filter.chip-other.is-active .chip-count { color: var(--amber-dark); }
+
 .board-empty {
   display: flex;
   flex-direction: column;
@@ -1335,6 +1418,11 @@ button { cursor: pointer; }
 .status-opt-confirmed input:checked + .status-box b { color: #fff; }
 .status-opt-confirmed input:checked + .status-box small { color: rgba(255, 255, 255, .7); }
 
+/* 相談の種別ピッカー（施設予約 / その他） */
+.status-opt-facility input:checked + .status-box { border-color: var(--ink); background: var(--stone-light); }
+.status-opt-other input:checked + .status-box { border-color: var(--amber-deep); background: var(--amber-soft); }
+.status-opt-other input:checked + .status-box b { color: var(--amber-dark); }
+
 .form-alert {
   border: 1px solid var(--pink);
   background: var(--pink-soft);
@@ -1395,6 +1483,37 @@ button { cursor: pointer; }
 .detail-item { display: flex; flex-direction: column; gap: 4px; }
 .detail-item dt { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--ink-35); }
 .detail-item dd { margin: 0; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+
+.detail-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.detail-cat {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  border-radius: 2px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-55);
+}
+
+.detail-cat.is-cat-other { border-color: var(--amber-deep); background: var(--amber-soft); color: var(--amber-dark); }
+.detail-cat.is-public { border-style: dashed; }
+
+.detail-item.is-nostaff dt { color: var(--pink-dark); }
+
+.nostaff-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  color: #fff;
+  background: var(--pink-dark);
+  border-radius: 2px;
+  padding: 3px 8px;
+}
 .detail-meta { font-size: 10px; color: var(--ink-35); letter-spacing: .04em; padding-top: 4px; }
 
 /* ==========================================================================
@@ -1503,4 +1622,86 @@ button { cursor: pointer; }
   .brand-text { display: none; }
   .seg-btn { padding: 7px 8px; }
   .mchip { font-size: 8.5px; }
+}
+
+/* ==========================================================================
+   外部向け 問い合わせフォーム（inquiry.html）
+   アプリ本体とは別に、単独ページとして開かれます。
+   ========================================================================== */
+
+.public-body {
+  display: block;
+  overflow: auto;
+  background: var(--stone-light);
+  min-height: 100%;
+}
+
+.public-page {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 36px 20px calc(56px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.public-header { display: flex; align-items: flex-start; gap: 16px; }
+.public-logo { width: 30px; height: auto; flex: none; }
+.public-headline { display: flex; flex-direction: column; gap: 8px; }
+.public-h { margin: 0; font-size: 19px; font-weight: 900; letter-spacing: .06em; line-height: 1.5; }
+.public-sub { margin: 0; font-size: 12px; line-height: 1.85; color: var(--ink-55); }
+
+.public-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 26px 24px;
+  box-shadow: 0 2px 6px rgba(20, 20, 20, .04), 0 18px 40px -28px rgba(20, 20, 20, .4);
+}
+
+.public-card form { display: flex; flex-direction: column; gap: 18px; }
+
+.public-sec {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.public-sec::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+
+.public-sec-h {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  color: var(--ink-35);
+  flex: none;
+}
+
+.public-note { margin: -6px 0 0; font-size: 10.5px; line-height: 1.7; color: var(--ink-55); }
+
+.public-foot { display: flex; flex-direction: column; gap: 10px; align-items: stretch; margin-top: 4px; }
+.btn-wide { justify-content: center; padding: 13px 18px; font-size: 13px; }
+.public-foot .public-note { margin: 0; text-align: center; }
+
+/* 自動投稿よけ。人には見せない */
+.public-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.public-done { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.public-done-mark { color: var(--pink-dark); }
+.public-done-h { margin: 0; font-size: 17px; font-weight: 900; letter-spacing: .08em; }
+.public-done-text { margin: 0; font-size: 12.5px; line-height: 1.9; color: var(--ink-80); }
+
+.public-footer {
+  text-align: center;
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  color: var(--ink-35);
+}
+
+@media (max-width: 640px) {
+  .public-page { padding: 24px 14px calc(44px + env(safe-area-inset-bottom)); gap: 16px; }
+  .public-card { padding: 20px 16px; border-radius: 4px; }
+  .public-h { font-size: 17px; }
+  .status-pick { gap: 8px; }
 }

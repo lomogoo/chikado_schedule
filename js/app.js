@@ -21,7 +21,7 @@ import {
   todayYmd, toMin, toHHMM, hhmm, slotOptions, durationLabel,
   formatSpanJa, eachDate, el, overlaps, urgencyDays,
   itemStart, itemEnd, totalMinutes, isAllDay,
-  STATUS_LABEL, INQUIRY_STATUS_LABEL, DOW_JA,
+  STATUS_LABEL, INQUIRY_STATUS_LABEL, INQUIRY_CATEGORY_LABEL, categoryOf, applyInquiryCategory, DOW_JA,
 } from './util.js';
 
 /* ==========================================================================
@@ -38,7 +38,7 @@ const state = {
   byDate: new Map(),
 
   inquiries: [],
-  boardFilter: 'all',
+  boardFilter: 'all',      // 'all' | 'open' | 'scheduled' | 'other'
   freshIds: new Set(),
 
   notifyItems: [],
@@ -435,6 +435,7 @@ function render({ keepScroll = true } = {}) {
       onOpen: openInquiryDetail,
       onNew: () => openInquiryForm(),
       onFilter: (f) => { state.boardFilter = f; render(); },
+      onCopyUrl: copyFormUrl,
     });
   }
 }
@@ -660,7 +661,8 @@ function openForm(preset = {}, item = null) {
     title: preset.title || '',
     purpose: preset.purpose || '',
     organizer: preset.organizer || '',
-    contact: preset.contact || '',
+    contact_email: preset.contact_email || '',
+    contact_phone: preset.contact_phone || '',
     staff: preset.staff || '',
     headcount: preset.headcount ?? '',
     notes: preset.notes || '',
@@ -675,7 +677,8 @@ function openForm(preset = {}, item = null) {
   f.elements.all_day.checked = isAllDay(src);
   f.elements.purpose.value = src.purpose || '';
   f.elements.organizer.value = src.organizer || '';
-  f.elements.contact.value = src.contact || '';
+  f.elements.contact_email.value = src.contact_email || '';
+  f.elements.contact_phone.value = src.contact_phone || '';
   f.elements.staff.value = src.staff || '';
   f.elements.headcount.value = src.headcount ?? '';
   f.elements.notes.value = src.notes || '';
@@ -704,7 +707,8 @@ function readForm() {
     status: f.querySelector('input[name="status"]:checked')?.value || 'tentative',
     purpose: f.elements.purpose.value.trim(),
     organizer: f.elements.organizer.value.trim(),
-    contact: f.elements.contact.value.trim(),
+    contact_email: f.elements.contact_email.value.trim(),
+    contact_phone: f.elements.contact_phone.value.trim(),
     staff: f.elements.staff.value.trim(),
     headcount: f.elements.headcount.value === '' ? null : Number(f.elements.headcount.value),
     notes: f.elements.notes.value.trim(),
@@ -835,6 +839,15 @@ function detailRow(label, value) {
   ]);
 }
 
+/** チカ堂担当者。空欄のときは「未定」と分かるように強調して出す */
+function staffRow(item) {
+  if (item.staff) return detailRow('チカ堂担当者', item.staff);
+  return el('div', { class: 'detail-item is-nostaff' }, [
+    el('dt', { text: 'チカ堂担当者' }),
+    el('dd', {}, [el('span', { class: 'nostaff-tag', text: '未定（担当者が決まっていません）' })]),
+  ]);
+}
+
 function openDetail(item) {
   state.detail = item;
   const days = eachDate(item.start_date, item.end_date).length;
@@ -863,8 +876,10 @@ function openDetail(item) {
     el('dl', { class: 'detail-list' }, [
       detailRow('利用内容', item.purpose),
       detailRow('利用者・団体名', item.organizer),
+      detailRow('メールアドレス', item.contact_email),
+      detailRow('電話番号', item.contact_phone),
       detailRow('連絡先', item.contact),
-      detailRow('チカ堂担当者', item.staff),
+      staffRow(item),
       detailRow('人数', item.headcount ? `${item.headcount}名` : ''),
       detailRow('備考', item.notes),
     ].filter(Boolean)),
@@ -905,13 +920,29 @@ async function confirmReservation() {
    掲示板（相談）
    ========================================================================== */
 
+/** 外部向けフォームの URL をクリップボードへ。使えない環境では入力欄を選択させる */
+async function copyFormUrl(url, button) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('フォームの URL をコピーしました');
+  } catch {
+    const input = button?.parentElement?.querySelector('.board-share-url');
+    if (input) { input.focus(); input.select(); }
+    toast('コピーできませんでした。URL を選択して手動でコピーしてください。', 'error');
+  }
+}
+
+function currentInquiryCategory() {
+  return dom.inquiryForm.querySelector('input[name="category"]:checked')?.value || 'facility';
+}
+
 function openInquiryForm(item = null) {
   const f = dom.inquiryForm;
   dom.inquiryAlert.hidden = true;
 
   const src = item || {
-    title: '', desired_period: '', purpose: '',
-    organizer: '', contact: '', staff: '', headcount: '', notes: '',
+    title: '', desired_period: '', purpose: '', category: 'facility',
+    organizer: '', contact_email: '', contact_phone: '', staff: '', headcount: '', notes: '',
   };
 
   f.elements.id.value = item?.id || '';
@@ -919,10 +950,13 @@ function openInquiryForm(item = null) {
   f.elements.desired_period.value = src.desired_period || '';
   f.elements.purpose.value = src.purpose || '';
   f.elements.organizer.value = src.organizer || '';
-  f.elements.contact.value = src.contact || '';
+  f.elements.contact_email.value = src.contact_email || '';
+  f.elements.contact_phone.value = src.contact_phone || '';
   f.elements.staff.value = src.staff || '';
   f.elements.headcount.value = src.headcount ?? '';
   f.elements.notes.value = src.notes || '';
+  [...f.elements.category].forEach((r) => { r.checked = r.value === categoryOf(src); });
+  applyInquiryCategory(f, categoryOf(src));
 
   dom.inquiryTitle.textContent = item ? '相談を編集' : '相談を貼る';
   dom.inquirySubmit.textContent = item ? '保存' : '貼る';
@@ -938,20 +972,24 @@ function closeInquiryForm() {
 
 async function submitInquiry() {
   const f = dom.inquiryForm;
+  const category = currentInquiryCategory();
+  const other = category === 'other';
   const v = {
     title: f.elements.title.value.trim(),
-    desired_period: f.elements.desired_period.value.trim(),
+    category,
+    desired_period: other ? '' : f.elements.desired_period.value.trim(),
     purpose: f.elements.purpose.value.trim(),
     organizer: f.elements.organizer.value.trim(),
-    contact: f.elements.contact.value.trim(),
+    contact_email: f.elements.contact_email.value.trim(),
+    contact_phone: f.elements.contact_phone.value.trim(),
     staff: f.elements.staff.value.trim(),
-    headcount: f.elements.headcount.value === '' ? null : Number(f.elements.headcount.value),
-    notes: f.elements.notes.value.trim(),
+    headcount: other || f.elements.headcount.value === '' ? null : Number(f.elements.headcount.value),
+    notes: other ? '' : f.elements.notes.value.trim(),
   };
 
   const errors = [];
   if (!v.title) errors.push('・件名を入力してください。');
-  if (!v.purpose) errors.push('・利用内容を入力してください。');
+  if (!v.purpose) errors.push(other ? '・お問い合わせ内容を入力してください。' : '・利用内容を入力してください。');
   if (errors.length) {
     dom.inquiryAlert.textContent = `入力内容をご確認ください。\n${errors.join('\n')}`;
     dom.inquiryAlert.hidden = false;
@@ -1016,17 +1054,26 @@ async function shelveInquiry() {
 function openInquiryDetail(item) {
   state.inquiryDetail = item;
 
+  const cat = categoryOf(item);
+  const other = cat === 'other';
+
   const nodes = [
-    el('span', { class: `detail-status is-inq-${item.status}`, text: INQUIRY_STATUS_LABEL[item.status] || item.status }),
+    el('div', { class: 'detail-badges' }, [
+      el('span', { class: `detail-status is-inq-${item.status}`, text: INQUIRY_STATUS_LABEL[item.status] || item.status }),
+      el('span', { class: `detail-cat is-cat-${cat}`, text: INQUIRY_CATEGORY_LABEL[cat] }),
+      item.source === 'public' ? el('span', { class: 'detail-cat is-public', text: '外部フォームから' }) : null,
+    ].filter(Boolean)),
     el('h3', { class: 'detail-h', text: item.title || '(無題)' }),
-    el('div', { class: 'detail-when' }, [
+    other ? null : el('div', { class: 'detail-when' }, [
       el('div', { class: 'detail-when-date', text: `希望時期：${item.desired_period || '未定・相談したい'}` }),
     ]),
     el('dl', { class: 'detail-list' }, [
-      detailRow('利用内容', item.purpose),
-      detailRow('利用者・団体名', item.organizer),
+      detailRow(other ? 'お問い合わせ内容' : '利用内容', item.purpose),
+      detailRow(other ? 'お名前・団体名' : '利用者・団体名', item.organizer),
+      detailRow('メールアドレス', item.contact_email),
+      detailRow('電話番号', item.contact_phone),
       detailRow('連絡先', item.contact),
-      detailRow('チカ堂担当者', item.staff),
+      staffRow(item),
       detailRow('想定人数', item.headcount ? `${item.headcount}名` : ''),
       detailRow('備考', item.notes),
     ].filter(Boolean)),
@@ -1041,6 +1088,7 @@ function openInquiryDetail(item) {
   dom.idetailBody.replaceChildren(...nodes.filter(Boolean));
   $('#idetail-schedule-label').textContent = item.status === 'scheduled'
     ? 'もう一度登録' : 'カレンダーへ';
+  dom.idetailSchedule.hidden = other;
   dom.idetailShelve.hidden = item.status === 'closed';
   dom.overlayIDetail.hidden = false;
   markItemRead(item, true);
@@ -1060,7 +1108,8 @@ function scheduleInquiry() {
     title: q.title,
     purpose: q.purpose,
     organizer: q.organizer,
-    contact: q.contact,
+    contact_email: q.contact_email,
+    contact_phone: q.contact_phone,
     staff: q.staff,
     headcount: q.headcount,
     notes: q.notes,
@@ -1154,6 +1203,9 @@ function bind() {
   $('#inquiry-cancel').addEventListener('click', closeInquiryForm);
   dom.inquirySubmit.addEventListener('click', submitInquiry);
   dom.inquiryForm.addEventListener('submit', (e) => { e.preventDefault(); submitInquiry(); });
+  dom.inquiryForm.querySelectorAll('input[name="category"]').forEach((r) => {
+    r.addEventListener('change', () => applyInquiryCategory(dom.inquiryForm, r.value));
+  });
   dom.inquiryDelete.addEventListener('click', () => {
     const id = dom.inquiryForm.elements.id.value;
     if (id) deleteInquiry(id);

@@ -248,6 +248,45 @@ export const INQUIRY_STATUS_LABEL = {
   closed: '見送り',
 };
 
+/** 相談の種別。'facility' が既定で、'other' は施設予約以外の問い合わせ */
+export const INQUIRY_CATEGORY_LABEL = {
+  facility: '施設予約',
+  other: 'その他',
+};
+
+/** 未設定・旧データを含めて種別を正規化する */
+export function categoryOf(item) {
+  return item?.category === 'other' ? 'other' : 'facility';
+}
+
+/**
+ * 相談の種別（施設予約 / その他）でフォームの見た目を切り替える。
+ * 「その他」は自由記述だけで完結させたいので、施設予約向けの設問を畳む。
+ * 相談フォーム（アプリ内）と外部向けフォームの両方から使います。
+ */
+export function applyInquiryCategory(form, category) {
+  const other = category === 'other';
+  form.querySelectorAll('[data-cat="facility"]').forEach((n) => { n.hidden = other; });
+  form.querySelectorAll('[data-cat-text]').forEach((n) => {
+    const [facilityText, otherText] = n.dataset.catText.split('|');
+    n.textContent = other ? otherText : facilityText;
+  });
+  const purpose = form.elements.purpose;
+  if (purpose) {
+    purpose.placeholder = other
+      ? '例）取材のご依頼について。◯月◯日の午後に伺えますでしょうか。'
+      : '例）作家12組による展示販売。搬入は前日から。';
+  }
+}
+
+/** メール・電話・旧 contact 列をまとめて 1 行の表示にする */
+export function contactLine(item) {
+  return [item?.contact_email, item?.contact_phone, item?.contact]
+    .map((v) => (v || '').trim())
+    .filter(Boolean)
+    .join(' / ');
+}
+
 /* ------------------------------------------------------------------ 汎用 */
 
 /** テキストを DOM に安全に流し込むための最小ヘルパー */
