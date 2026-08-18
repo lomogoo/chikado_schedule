@@ -158,14 +158,19 @@
         <textarea class="input textarea" name="purpose" rows="3" maxlength="1000" placeholder="例）飲食提供（サンドイッチ・蒸し牡蠣）＋物販。搬入 14:00 / 撤収 22:30。" required></textarea>
       </label>
 
+      <label class="field">
+        <span class="label">利用者・団体名</span>
+        <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂プロジェクト" />
+      </label>
+
       <div class="field-row">
         <label class="field">
-          <span class="label">利用者・団体名</span>
-          <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂プロジェクト" />
+          <span class="label">メールアドレス <i class="opt">任意</i></span>
+          <input class="input" type="email" name="contact_email" maxlength="120" placeholder="例）info@example.jp" />
         </label>
         <label class="field">
-          <span class="label">連絡先</span>
-          <input class="input" type="text" name="contact" maxlength="120" placeholder="電話 / メール" />
+          <span class="label">電話番号 <i class="opt">任意</i></span>
+          <input class="input" type="tel" name="contact_phone" maxlength="40" placeholder="例）022-000-0000" />
         </label>
       </div>
 
@@ -231,29 +236,54 @@
 
       <p class="sheet-lead">日程が決まっていない利用希望を、付箋にして貼っておけます。<br>日程が固まったら、この相談からそのままカレンダーへ移せます。</p>
 
+      <div class="field">
+        <span class="label">相談内容 <i class="req">必須</i></span>
+        <div class="status-pick">
+          <label class="status-opt status-opt-facility">
+            <input type="radio" name="category" value="facility" checked />
+            <span class="status-box">
+              <b>施設予約</b>
+              <small>チカ堂を使いたい</small>
+            </span>
+          </label>
+          <label class="status-opt status-opt-other">
+            <input type="radio" name="category" value="other" />
+            <span class="status-box">
+              <b>その他</b>
+              <small>それ以外の問い合わせ</small>
+            </span>
+          </label>
+        </div>
+      </div>
+
       <label class="field">
         <span class="label">件名 <i class="req">必須</i></span>
         <input class="input" type="text" name="title" maxlength="80" placeholder="例）冬のクラフト市（仮）" required />
       </label>
 
-      <label class="field">
+      <label class="field" data-cat="facility">
         <span class="label">希望時期 <i class="opt">任意</i><small class="hint">ざっくりでOK</small></span>
         <input class="input" type="text" name="desired_period" maxlength="120" placeholder="例）12月の週末、平日夜、いつでも" />
       </label>
 
       <label class="field">
-        <span class="label">利用内容 <i class="req">必須</i></span>
-        <textarea class="input textarea" name="purpose" rows="3" maxlength="1000" placeholder="例）作家12組による展示販売。搬入は前日から。" required></textarea>
+        <span class="label"><span data-cat-text="利用内容|お問い合わせ内容">利用内容</span> <i class="req">必須</i></span>
+        <textarea class="input textarea" name="purpose" rows="3" maxlength="2000" placeholder="例）作家12組による展示販売。搬入は前日から。" required></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label"><span data-cat-text="利用者・団体名|お名前・団体名">利用者・団体名</span></span>
+        <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂プロジェクト" />
       </label>
 
       <div class="field-row">
         <label class="field">
-          <span class="label">利用者・団体名</span>
-          <input class="input" type="text" name="organizer" maxlength="80" placeholder="例）チカ堂プロジェクト" />
+          <span class="label">メールアドレス <i class="opt">任意</i></span>
+          <input class="input" type="email" name="contact_email" maxlength="120" placeholder="例）info@example.jp" />
         </label>
         <label class="field">
-          <span class="label">連絡先</span>
-          <input class="input" type="text" name="contact" maxlength="120" placeholder="電話 / メール" />
+          <span class="label">電話番号 <i class="opt">任意</i></span>
+          <input class="input" type="tel" name="contact_phone" maxlength="40" placeholder="例）022-000-0000" />
         </label>
       </div>
 
@@ -262,13 +292,13 @@
           <span class="label">チカ堂担当者 <i class="opt">任意</i></span>
           <input class="input" type="text" name="staff" maxlength="80" placeholder="例）吉田" />
         </label>
-        <label class="field field-narrow">
+        <label class="field field-narrow" data-cat="facility">
           <span class="label">想定人数</span>
           <input class="input" type="number" name="headcount" min="0" max="9999" placeholder="—" />
         </label>
       </div>
 
-      <label class="field">
+      <label class="field" data-cat="facility">
         <span class="label">備考</span>
         <textarea class="input textarea" name="notes" rows="2" maxlength="1000" placeholder="検討中の条件など"></textarea>
       </label>
