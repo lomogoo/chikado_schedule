@@ -254,6 +254,15 @@ export const INQUIRY_CATEGORY_LABEL = {
   other: 'その他',
 };
 
+/**
+ * 閉じた相談の呼び名。
+ * 施設予約は「見送り」、その他の問い合わせは「対応済」。
+ * 保存される状態はどちらも 'closed' で、呼び方だけを種別で変えています。
+ */
+export function closedLabel(item) {
+  return categoryOf(item) === 'other' ? '対応済' : '見送り';
+}
+
 /** 未設定・旧データを含めて種別を正規化する */
 export function categoryOf(item) {
   return item?.category === 'other' ? 'other' : 'facility';

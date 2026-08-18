@@ -9,7 +9,7 @@
  * 一目で区別できるよう黄色い付箋にしています。
  */
 
-import { el, hashCode, categoryOf } from './util.js';
+import { el, hashCode, categoryOf, closedLabel } from './util.js';
 
 function tiltOf(id) {
   // -2.4deg 〜 2.4deg を ID から決める（再描画しても傾きが変わらないように）
@@ -55,7 +55,7 @@ function buildNote(item, ctx) {
       ? el('span', { class: 'note-stamp', text: '日程確定' })
       : null,
     item.status === 'closed'
-      ? el('span', { class: 'note-stamp is-closed', text: '見送り' })
+      ? el('span', { class: 'note-stamp is-closed', text: closedLabel(item) })
       : null,
   ]);
 }
@@ -65,23 +65,26 @@ export function publicFormUrl() {
   return new URL('inquiry.html', location.href).href;
 }
 
+/** 外部向けフォームへの導線。場所を取らないよう、小さなボタン 2 つだけに留めている */
 function buildShare(ctx) {
   const url = publicFormUrl();
   return el('div', { class: 'board-share' }, [
-    el('div', { class: 'board-share-lead' }, [
-      el('b', { text: '外部向け問い合わせフォーム' }),
-      el('span', { text: '施設を使いたい方に、この URL を渡すと掲示板へ直接相談を貼ってもらえます。' }),
-    ]),
-    el('div', { class: 'board-share-row' }, [
-      el('input', { class: 'input board-share-url', type: 'text', readonly: true, value: url, onclick: (e) => e.target.select() }),
-      el('button', {
-        class: 'btn btn-ghost',
-        type: 'button',
-        text: 'URLをコピー',
-        onclick: (e) => ctx.onCopyUrl(url, e.currentTarget),
-      }),
-      el('a', { class: 'btn btn-ghost', href: url, target: '_blank', rel: 'noopener', text: 'フォームを開く' }),
-    ]),
+    el('span', { class: 'board-share-tag', text: '外部フォーム' }),
+    el('button', {
+      class: 'btn-mini',
+      type: 'button',
+      title: `外部向け問い合わせフォームの URL をコピー（${url}）`,
+      text: 'URLをコピー',
+      onclick: (e) => ctx.onCopyUrl(url, e.currentTarget),
+    }),
+    el('a', {
+      class: 'btn-mini',
+      href: url,
+      target: '_blank',
+      rel: 'noopener',
+      title: '外部向け問い合わせフォームを開く',
+      text: '開く ↗',
+    }),
   ]);
 }
 
@@ -106,7 +109,10 @@ export function renderBoard(root, ctx) {
     if (f === 'other') return categoryOf(q) === 'other';
     return true;
   };
-  const shown = inquiries.filter((q) => match(q, filter));
+  // 閉じた相談（見送り / 対応済）は末尾へ。並び順自体は元のまま保つ
+  const shown = inquiries
+    .filter((q) => match(q, filter))
+    .sort((a, b) => (a.status === 'closed' ? 1 : 0) - (b.status === 'closed' ? 1 : 0));
 
   const FILTERS = [['all', 'すべて'], ['open', '相談中'], ['scheduled', '日程確定'], ['other', 'その他']];
   const counts = Object.fromEntries(
@@ -122,7 +128,6 @@ export function renderBoard(root, ctx) {
       el('h2', { class: 'board-h', text: 'イベント相談掲示板' }),
       el('p', { class: 'board-sub', text: '日程が決まっていない利用希望を貼っておく場所です。話がまとまったら、そのままカレンダーへ移せます。' }),
     ]),
-    buildShare(ctx),
     el('div', { class: 'board-tools' }, [
       el('div', { class: 'filter-cluster' }, FILTERS.map(([value, label]) => el('button', {
         class: `chip-filter${filter === value ? ' is-active' : ''}${value === 'other' ? ' chip-other' : ''}`,
@@ -135,6 +140,7 @@ export function renderBoard(root, ctx) {
       el('button', { class: 'btn btn-primary', type: 'button', onclick: ctx.onNew }, [
         el('span', { text: '相談を貼る' }),
       ]),
+      buildShare(ctx),
     ]),
   ]));
 

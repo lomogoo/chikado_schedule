@@ -21,7 +21,8 @@ import {
   todayYmd, toMin, toHHMM, hhmm, slotOptions, durationLabel,
   formatSpanJa, eachDate, el, overlaps, urgencyDays,
   itemStart, itemEnd, totalMinutes, isAllDay,
-  STATUS_LABEL, INQUIRY_STATUS_LABEL, INQUIRY_CATEGORY_LABEL, categoryOf, applyInquiryCategory, DOW_JA,
+  STATUS_LABEL, INQUIRY_STATUS_LABEL, INQUIRY_CATEGORY_LABEL, categoryOf, closedLabel,
+  applyInquiryCategory, DOW_JA,
 } from './util.js';
 
 /* ==========================================================================
@@ -101,6 +102,7 @@ const dom = {
   idetailBody: $('#idetail-body'),
   idetailSchedule: $('#idetail-schedule'),
   idetailShelve: $('#idetail-shelve'),
+  idetailReopen: $('#idetail-reopen'),
 
   toastWrap: $('#toast-wrap'),
 };
@@ -920,15 +922,13 @@ async function confirmReservation() {
    掲示板（相談）
    ========================================================================== */
 
-/** 外部向けフォームの URL をクリップボードへ。使えない環境では入力欄を選択させる */
-async function copyFormUrl(url, button) {
+/** 外部向けフォームの URL をクリップボードへ。使えない環境では手動コピー用に見せる */
+async function copyFormUrl(url) {
   try {
     await navigator.clipboard.writeText(url);
     toast('フォームの URL をコピーしました');
   } catch {
-    const input = button?.parentElement?.querySelector('.board-share-url');
-    if (input) { input.focus(); input.select(); }
-    toast('コピーできませんでした。URL を選択して手動でコピーしてください。', 'error');
+    window.prompt('この URL をコピーしてください', url);
   }
 }
 
@@ -1037,12 +1037,34 @@ async function deleteInquiry(id) {
   }
 }
 
+/**
+ * 相談を閉じる（アーカイブ）。
+ * 施設予約は「見送り」、その他の問い合わせは「対応済」と呼び分けるだけで、
+ * 保存する状態はどちらも 'closed' です（付箋はグレーになり、末尾に沈みます）。
+ */
 async function shelveInquiry() {
   const q = state.inquiryDetail;
-  if (!q || !window.confirm('この相談を「見送り」にします。よろしいですか？')) return;
+  if (!q) return;
+  const label = closedLabel(q);
+  if (!window.confirm(`この相談を「${label}」にします。よろしいですか？`)) return;
   try {
     await Inquiries.update(q.id, { status: 'closed' });
-    toast('見送りにしました');
+    toast(`${label}にしました`);
+    closeInquiryDetail();
+    await loadBoard();
+    loadNotifications();
+  } catch (err) {
+    reportError(err);
+  }
+}
+
+/** 閉じた相談を相談中へ戻す（押し間違いのやり直し用） */
+async function reopenInquiry() {
+  const q = state.inquiryDetail;
+  if (!q) return;
+  try {
+    await Inquiries.update(q.id, { status: 'open' });
+    toast('相談中に戻しました');
     closeInquiryDetail();
     await loadBoard();
     loadNotifications();
@@ -1059,7 +1081,10 @@ function openInquiryDetail(item) {
 
   const nodes = [
     el('div', { class: 'detail-badges' }, [
-      el('span', { class: `detail-status is-inq-${item.status}`, text: INQUIRY_STATUS_LABEL[item.status] || item.status }),
+      el('span', {
+        class: `detail-status is-inq-${item.status}`,
+        text: item.status === 'closed' ? closedLabel(item) : (INQUIRY_STATUS_LABEL[item.status] || item.status),
+      }),
       el('span', { class: `detail-cat is-cat-${cat}`, text: INQUIRY_CATEGORY_LABEL[cat] }),
       item.source === 'public' ? el('span', { class: 'detail-cat is-public', text: '外部フォームから' }) : null,
     ].filter(Boolean)),
@@ -1090,6 +1115,8 @@ function openInquiryDetail(item) {
     ? 'もう一度登録' : 'カレンダーへ';
   dom.idetailSchedule.hidden = other;
   dom.idetailShelve.hidden = item.status === 'closed';
+  dom.idetailShelve.textContent = closedLabel(item);
+  dom.idetailReopen.hidden = item.status !== 'closed';
   dom.overlayIDetail.hidden = false;
   markItemRead(item, true);
 }
@@ -1213,6 +1240,7 @@ function bind() {
 
   $('#idetail-close').addEventListener('click', closeInquiryDetail);
   dom.idetailShelve.addEventListener('click', shelveInquiry);
+  dom.idetailReopen.addEventListener('click', reopenInquiry);
   $('#idetail-edit').addEventListener('click', () => {
     const item = state.inquiryDetail;
     closeInquiryDetail();
