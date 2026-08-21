@@ -1279,6 +1279,10 @@ button { cursor: pointer; }
 
 .from-inquiry b { font-size: 10.5px; font-weight: 900; letter-spacing: .1em; color: var(--pink-dark); }
 
+/* 予定の複製で開いたときの案内（相談からの流入と区別してグレーで出す） */
+.from-inquiry.is-copy { border-color: var(--line-strong); background: var(--stone-light); }
+.from-inquiry.is-copy b { color: var(--ink-80); }
+
 /* フォーム */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field-narrow { max-width: 110px; }

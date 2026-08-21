@@ -52,6 +52,7 @@ const state = {
   detail: null,
   inquiryDetail: null,
   fromInquiry: null,      // 相談からカレンダー化しているときの相談レコード
+  duplicateOf: null,      // 複製元の予約レコード（複製で新規登録しているとき）
   pendingConflict: false,
 };
 
@@ -85,6 +86,7 @@ const dom = {
   formSubmit: $('#form-submit'),
   formDelete: $('#form-delete'),
   fromInquiry: $('#from-inquiry'),
+  formCopy: $('#form-copy'),
   spanLabel: $('#span-label'),
 
   overlayDetail: $('#overlay-detail'),
@@ -654,8 +656,20 @@ function openForm(preset = {}, item = null) {
     dom.fromInquiry.hidden = true;
   }
 
+  state.duplicateOf = item ? null : preset.copyOf || null;
+  if (state.duplicateOf) {
+    const from = state.duplicateOf;
+    dom.formCopy.hidden = false;
+    dom.formCopy.replaceChildren(
+      el('b', { text: '予定を複製しています' }),
+      el('span', { text: `「${from.title || '(無題)'}」（${formatSpanJa(from)}）の内容をそのまま引き継ぎました。日時を変えて保存すると、別の予約として新しく登録されます。` }),
+    );
+  } else {
+    dom.formCopy.hidden = true;
+  }
+
   const src = item || {
-    status: 'tentative',
+    status: preset.status || 'tentative',
     start_date: preset.start_date || todayYmd(),
     end_date: preset.end_date || preset.start_date || todayYmd(),
     start_time: preset.start_time || '18:00',
@@ -686,18 +700,20 @@ function openForm(preset = {}, item = null) {
   f.elements.notes.value = src.notes || '';
   [...f.elements.status].forEach((r) => { r.checked = r.value === (src.status || 'tentative'); });
 
-  dom.formTitle.textContent = item ? '予約を編集' : '新規予約';
+  dom.formTitle.textContent = item ? '予約を編集' : state.duplicateOf ? '予約を複製' : '新規予約';
   dom.formDelete.hidden = !item;
   applyAllDay();
 
   dom.overlayForm.hidden = false;
-  setTimeout(() => f.elements.title.focus(), 30);
+  // 複製は「日時だけ変える」のが前提なので、件名ではなく開始日へ先に入れる
+  setTimeout(() => (state.duplicateOf ? f.elements.start_date : f.elements.title).focus(), 30);
 }
 
 function closeForm() {
   dom.overlayForm.hidden = true;
   state.editing = null;
   state.fromInquiry = null;
+  state.duplicateOf = null;
   state.pendingConflict = false;
 }
 
@@ -757,6 +773,10 @@ function showAlert(text) {
 async function submitForm() {
   const v = readForm();
 
+  // フォームに入力欄が無い旧「連絡先」列は、複製のときだけ複製元から引き継ぐ
+  const duplicateOf = state.duplicateOf;
+  if (duplicateOf?.contact) v.contact = duplicateOf.contact;
+
   const errors = validate(v);
   if (errors.length) {
     state.pendingConflict = false;
@@ -797,7 +817,9 @@ async function submitForm() {
       }
     }
 
-    toast(id ? '予約を更新しました' : inquiry ? 'カレンダーに登録しました' : '予約を登録しました');
+    toast(id ? '予約を更新しました'
+      : inquiry ? 'カレンダーに登録しました'
+        : duplicateOf ? '予約を複製しました' : '予約を登録しました');
     const landing = saved?.start_date || v.start_date;
     closeForm();
 
@@ -814,6 +836,28 @@ async function submitForm() {
   } finally {
     dom.formSubmit.disabled = false;
   }
+}
+
+/** 予定の複製。日時以外をそのまま引き継いだ新規フォームを開く */
+function duplicateReservation(item) {
+  if (!item) return;
+  closeDetail();
+  openForm({
+    copyOf: item,
+    status: item.status,
+    start_date: item.start_date,
+    end_date: item.end_date || item.start_date,
+    start_time: hhmm(item.start_time),
+    end_time: hhmm(item.end_time),
+    title: item.title || '',
+    purpose: item.purpose || '',
+    organizer: item.organizer || '',
+    contact_email: item.contact_email || '',
+    contact_phone: item.contact_phone || '',
+    staff: item.staff || '',
+    headcount: item.headcount ?? '',
+    notes: item.notes || '',
+  });
 }
 
 async function deleteReservation(id) {
@@ -1219,6 +1263,9 @@ function bind() {
     const item = state.detail;
     closeDetail();
     if (item) openForm({}, item);
+  });
+  $('#detail-duplicate').addEventListener('click', () => {
+    duplicateReservation(state.detail);
   });
   $('#detail-delete').addEventListener('click', () => {
     if (state.detail) deleteReservation(state.detail.id);
